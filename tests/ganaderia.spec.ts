@@ -64,8 +64,8 @@ test('Ganadería registra sin red, recupera referencias y reintenta en orden sin
     let page = context.pages()[0]
     await page.goto(origin)
     await page.getByRole('button', { name: 'Ganadería', exact: true }).click()
-    await page.getByRole('button', { name: 'Preparar Ganadería offline' }).click()
-    await expect(page.getByText('Dispositivo preparado para trabajar sin conexión.')).toBeVisible()
+    await expect(page.getByText('Listo para trabajar sin conexión')).toBeVisible()
+    await expect(page.getByLabel('Finca ganadera')).toHaveValue('finca')
     await context.setOffline(true)
     await expect(page.getByText('Sin conexión', { exact: true })).toBeVisible()
     await page.evaluate(ids => {
@@ -116,8 +116,7 @@ test('Ganadería registra sin red, recupera referencias y reintenta en orden sin
     await expect(page.getByRole('row', { name: /Revisión de prueba/ })).toContainText('Cría de prueba')
     await mock(context)
     await context.setOffline(false)
-    const sync = page.getByRole('button', { name: 'Sincronizar Ganadería' })
-    await sync.click()
+    const sync = page.getByRole('button', { name: 'Sincronizar ahora' })
     await expect(page.getByRole('alert')).toContainText('Respuesta perdida')
     await page.getByRole('button', { name: 'Incidencias' }).click()
     await expect(page.getByRole('row', { name: /Respuesta perdida/ }).filter({ hasText: motherId })).toContainText(motherId)

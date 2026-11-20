@@ -11,13 +11,15 @@ interface Operation {
   type: 'create'
   state: 'pending' | 'confirmed'
   payload: Harvest
+  conflict?: boolean
 }
 
-export async function syncHarvests(owner: string, allowed: (farm: string) => boolean) {
+export async function syncHarvests(owner: string, allowed: (farm: string) => boolean, includeConflicts: boolean) {
   const db = await openDatabase()
   const operations: Operation[] = await result(db.transaction(STORES.operations).objectStore(STORES.operations).getAll())
   const queue = operations.filter(operation => operation.owner === owner && operation.entity === 'recoleccion'
-    && operation.type === 'create' && operation.state === 'pending' && allowed(operation.payload.finca.id))
+    && operation.type === 'create' && operation.state === 'pending' && (includeConflicts || !operation.conflict)
+    && allowed(operation.payload.finca.id))
   if (!queue.length) return 0
 
   const csrf = await request('auth/csrf')

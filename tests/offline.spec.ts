@@ -43,6 +43,7 @@ test('descarga, captura offline, confirma atomicidad y recupera al reabrir Chrom
     let authenticated = false
     let syncAttempts = 0
     let expiry = 0
+    let grantTime: number | undefined
     const mockProvider = (active: BrowserContext) => active.route(`${api}/**`, async route => {
       const url = new URL(route.request().url())
       const headers = { 'Access-Control-Allow-Origin': app, 'Access-Control-Allow-Credentials': 'true',
@@ -58,7 +59,7 @@ test('descarga, captura offline, confirma atomicidad y recupera al reabrir Chrom
       }
       if (url.pathname.endsWith('/auth/offline')) {
         const deviceId = new URLSearchParams(route.request().postData() ?? '').get('deviceId')
-        const issuedAt = Date.now()
+        const issuedAt = grantTime ?? Date.now()
         requests.push('permiso-emitido')
         expiry = issuedAt + 90 * 60 * 1000
         const payload = Buffer.from(JSON.stringify({ user, deviceId, issuedAt, expiresAt: expiry }))
@@ -89,7 +90,6 @@ test('descarga, captura offline, confirma atomicidad y recupera al reabrir Chrom
     await page.goto(app)
     await page.getByRole('button', { name: 'Ingresar con SuiteCRM' }).click()
     expect(requests).toContain('inicio-suitecrm')
-    await page.getByRole('button', { name: 'Preparar dispositivo offline' }).click()
     await expect(page.getByText('Listo para trabajar sin conexión')).toBeVisible()
     expect(requests).toContain('/api/v1/contactos|2|')
     expect(requests).toContain('/api/v1/lotes|1|a')
@@ -164,21 +164,20 @@ test('descarga, captura offline, confirma atomicidad y recupera al reabrir Chrom
     expect(await page.evaluate(() => localStorage.getItem('agrosync.authorization'))).toBe(originalGrant)
 
     authenticated = false
+    grantTime = expiry + 1000
     await mockProvider(context)
     await context.setOffline(false)
     await page.getByRole('button', { name: 'Ingresar con SuiteCRM' }).click()
     await expect(page.getByRole('row', { name: /Recolector de prueba 2/ })).toBeVisible()
     await expect(page.getByText('Pendiente de sincronizar', { exact: true })).toBeVisible()
-    expect(await readStores(page)).toEqual(stored)
-    expect(requests.filter(item => item === 'permiso-emitido')).toHaveLength(1)
-    const sync = page.getByRole('button', { name: 'Sincronizar recolecciones' })
-    await sync.click()
     await expect(page.getByRole('alert')).toContainText('SuiteCRM no confirmó')
+    await expect(page.getByText('Listo para trabajar sin conexión')).toBeVisible()
+    expect(syncAttempts).toBe(1)
+    expect(requests.filter(item => item === 'permiso-emitido')).toHaveLength(2)
     const failed = await readStores(page)
-    expect(failed).toEqual({
-      ...stored,
-      operations: [{ ...stored.operations[0], issue: 'SuiteCRM no confirmó.', conflict: false }],
-    })
+    expect(failed.records).toEqual(stored.records)
+    expect(failed.operations).toEqual([{ ...stored.operations[0], issue: 'SuiteCRM no confirmó.', conflict: false }])
+    const sync = page.getByRole('button', { name: 'Sincronizar ahora' })
     await sync.click()
     await expect(page.getByText('Confirmado en SuiteCRM', { exact: true })).toBeVisible()
     const confirmed = await readStores(page)

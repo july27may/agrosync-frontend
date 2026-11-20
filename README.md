@@ -17,11 +17,11 @@ npm run start
 ```
 
 1. Usa una cuenta de SuiteCRM con grupos y roles AgroSync asignados. Abre **http://127.0.0.1:5173/** con conexión y pulsa **Ingresar con SuiteCRM**. Conserva esta URL exacta en cada visita, ya que el almacenamiento y el service worker pertenecen al origen del navegador.
-2. Deja terminar la descarga automática o pulsa **Actualizar catálogos**. Pulsa **Preparar dispositivo offline** con la sesión abierta. Espera **Listo para trabajar sin conexión** y confirma que la finca que usarás tiene un lote seleccionable y que hay contactos. La descarga lee todas las páginas y conserva el catálogo anterior si falla algún paso.
+2. Tras iniciar sesión con conexión, la preparación arranca automáticamente. Espera **Listo para trabajar sin conexión**. La barra indica desde cuándo está lista y hasta cuándo es válida la autorización. Para Café, confirma que tu finca tiene un lote seleccionable y que aparecen los contactos. Usa **Actualizar datos offline** si necesitas refrescar los datos y renovar la autorización de forma explícita.
 3. Desconecta la red, selecciona finca, lote y recolector y guarda una recolección. Cierra y vuelve a abrir la aplicación desde el mismo perfil para recuperar las recolecciones. El navegador debe conservar sus datos del sitio.
-4. La captura guarda el registro y su operación en la misma transacción, con UUID independientes para el registro y `operationId`. Los estados visibles quedan en **Guardado localmente** y **Pendiente de sincronizar**. La cola queda disponible para el próximo incremento.
+4. La captura guarda el registro y su operación en la misma transacción, con UUID independientes para el registro y `operationId`. Los estados visibles quedan en **Guardado localmente** y **Pendiente de sincronizar**. La cola se envía al abrir con conexión o al reconectar.
 
-El build copia el HTML, los estilos y el JavaScript al caché del service worker en la primera visita. Las consultas al backend se realizan al descargar catálogos y éstos se persisten en IndexedDB. En loopback funciona por HTTP. Fuera de loopback el service worker requiere HTTPS. El backend autoriza mediante CORS solo el origen configurado en `AGROSYNC_FRONTEND_ORIGIN`. Si se cambia la URL del backend, define `VITE_API_BASE_URL` antes de compilar.
+La preparación reúne tres pasos. **Actualizar datos offline** descarga los catálogos base paginados de fincas, lotes y contactos y los guarda en IndexedDB. Al abrir la aplicación, el service worker guarda HTML, JavaScript y CSS en su caché y React espera a que controle la página. Java emite por separado la autorización offline firmada, después de verificar la sesión y los permisos en SuiteCRM. La preparación conserva una autorización vigente en los arranques automáticos y el botón permite renovarla con conexión. Abre Ganadería, Inventario y el tipo de registro que necesites, además de las semanas que quieras consultar, para descargar sus datos específicos antes de desconectarte. En loopback funciona por HTTP. Fuera de loopback el service worker requiere HTTPS. El backend autoriza mediante CORS solo el origen configurado en `AGROSYNC_FRONTEND_ORIGIN`. Si se cambia la URL del backend, define `VITE_API_BASE_URL` antes de compilar.
 
 ## Organización
 
@@ -51,21 +51,21 @@ También puedes ejecutar `CHROME_PATH=/usr/bin/google-chrome npm test` si ya tie
 
 ## Enviar recolecciones pendientes
 
-Con conexión, inicia sesión con SuiteCRM, comprueba la finca y el perfil que muestra la aplicación y pulsa **Sincronizar recolecciones**. Las recolecciones autorizadas se envían una a una. Si el CRM falla, las operaciones sin confirmar quedan pendientes para reintentar. **Confirmado en SuiteCRM** significa que el servidor devolvió y se guardó el acuse del mismo UUID.
+Al abrir AgroSync con conexión y al reconectar con la aplicación abierta, se intenta enviar la cola del usuario. Antes de escribir, React consulta la sesión y los permisos vigentes en Java, y Java vuelve a comprobarlos al recibir cada operación. **Sincronizar ahora** ejecuta el mismo recorrido bajo demanda. Los envíos comparten un único coordinador y un bloqueo entre pestañas en navegadores compatibles con Web Locks. Se mantienen los UUID y los acuses de SuiteCRM. Un fallo, conflicto o sesión vencida deja el registro pendiente. Las incidencias que requieren intervención se pueden consultar en **Incidencias**. La sincronización automática funciona mientras la aplicación está abierta.
 
 ## Captura ganadera offline
 
 1. Inicia sesión con SuiteCRM en `http://127.0.0.1:5173/`. En la navegación superior, abre **Ganadería** y selecciona la finca.
-2. Mientras tengas conexión, deja cargar los animales, eventos y catálogos. Pulsa **Preparar Ganadería offline** y comprueba la fecha de vencimiento. Puedes alternar con **Café** desde el mismo origen y perfil de navegador.
+2. Mientras tengas conexión, deja cargar los animales, eventos y catálogos. Espera a que aparezcan los animales y eventos y comprueba la vigencia en la barra de preparación. Puedes alternar con **Café** desde el mismo origen y perfil de navegador.
 3. Registra animales y eventos sin conexión. La fecha de nacimiento es opcional y la edad se calcula al consultar. Las referencias a madre y animal se conservan aunque ambos estén pendientes.
-4. Al reconectar, pulsa **Sincronizar Ganadería**. Primero se confirma la madre, luego la cría y finalmente los eventos que dependan de ese animal. Si la respuesta se pierde o un registro falla, lo pendiente se conserva y se puede reintentar con el mismo UUID.
+4. Al reconectar se envía la cola automáticamente. También puedes pulsar **Sincronizar ahora**. Primero se confirma la madre, luego la cría y finalmente los eventos que dependan de ese animal. Si la respuesta se pierde o un registro falla, lo pendiente se conserva y se puede reintentar con el mismo UUID.
 5. Los estados confirmados corresponden a acuses de SuiteCRM. Administrador de finca puede crear animales y eventos, Registrador puede crear eventos y Consulta solo puede leer. Java vuelve a verificar ese alcance al sincronizar.
 
 `src/features/ganaderia` contiene el cálculo de edad, la interfaz, la persistencia y el envío. IndexedDB conserva los almacenes de Café y agrega los de animales y eventos en la versión 2. Ambos módulos comparten la cola de operaciones, con tipos distintos.
 
 ## Consulta semanal de Café
 
-Selecciona **Finca de consulta** y cualquier fecha de la semana. El periodo abarca de lunes a domingo. La tabla y la liquidación comparten la misma selección. Al cambiar la finca del formulario también se actualiza la finca consultada. El recolector del formulario solo se usa para la captura.
+Selecciona **Finca de consulta** y cualquier fecha de la semana. El periodo abarca de lunes a domingo. La tabla y la liquidación comparten la misma selección. Al cambiar la finca del formulario también se actualiza la finca consultada. El recolector del formulario solo se usa para la captura. En la tabla puedes elegir 5, 10, 20 o 50 registros por página. La paginación conserva el total semanal y el CSV incluye todas las páginas de la consulta.
 
 La consulta combina las cosechas de SuiteCRM con los pendientes de ese dispositivo dentro de la finca y semana. Si una operación local ya está en SuiteCRM, su ID central evita contarla dos veces. El total de la finca suma los subtotales semanales de todos los recolectores. Abre con conexión las semanas que necesites consultar offline. Sin una descarga previa, la vista indica que el total disponible se limita a los datos de ese dispositivo.
 

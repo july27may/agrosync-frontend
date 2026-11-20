@@ -4,7 +4,7 @@ import { FarmAccessDenied } from '../../shared/api'
 import type { Catalogs } from '../catalogos/catalogs'
 import { COFFEE } from '../recolecciones/harvests'
 import { localDate } from '../../shared/format'
-import { canCreateFarm, createFarm, readRecords, refreshRecords, saveChange, syncRecords, type Change, type Fields, type Module, type RecordData } from './data'
+import { canCreateFarm, createFarm, readRecords, refreshRecords, saveChange, type Change, type Fields, type Module, type RecordData } from './data'
 
 const names = { fincas: 'Fincas', lotes: 'Lotes', labores: 'Labores cafeteras', insumos: 'Insumos', cosechas: 'Recolecciones confirmadas', animales: 'Animales', eventos: 'Eventos sanitarios' }
 const types = { siembra: 'Siembra', fertilizacion: 'Fertilización', control_malezas: 'Control de malezas', poda: 'Poda', otra: 'Otra' }
@@ -22,9 +22,9 @@ function summary(record: Fields) {
     record.sexo, record.nacimiento, record.madreId, record.estado, record.raza, record.animalId, record.producto, record.certificado, record.observaciones, record.tarifaKg && `${record.tarifaKg} COP/kg`].filter(Boolean).join(' · ')
 }
 
-export function Registros({ user, catalogs, offline, ready, prepare, authorize, afterSync }: {
-  user: User; catalogs?: Catalogs; offline: boolean; ready: boolean; prepare: () => Promise<void>
-  authorize: (farm: string) => Promise<boolean>; afterSync: () => Promise<void>
+export function Registros({ user, catalogs, offline, authorize, revision, afterCreate }: {
+  user: User; catalogs?: Catalogs; offline: boolean; revision: number
+  authorize: (farm: string) => Promise<boolean>; afterCreate: () => Promise<void>
 }) {
   const [module, setModule] = useState<Module>('fincas')
   const [selected, setFarm] = useState('')
@@ -89,7 +89,7 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
       setError(failure instanceof Error ? failure.message : 'La consulta no se pudo actualizar.')
     })
     return () => { current = false }
-  }, [user.id, farm, module, offline])
+  }, [user.id, farm, module, offline, revision])
 
   async function run(action: () => Promise<unknown>) {
     if (active.current) return
@@ -149,7 +149,7 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
     const fields = new FormData(event.currentTarget)
     void run(async () => {
       await createFarm(user.id, String(fields.get('nombre') ?? '').trim(), String(fields.get('codigo') ?? '').trim())
-      await afterSync()
+      await afterCreate()
       window.location.reload()
     })
   }
@@ -165,12 +165,6 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
             {farms.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
           <label>Tipo de registro<select value={module} disabled={busy} onChange={event => setModule(event.target.value as Module)}>
             {Object.entries(names).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
-        </div>
-        <div className="action-group">
-          <button className="secondary" disabled={busy || offline || !ready || !data}
-            onClick={() => void run(prepare)}>Preparar registros offline</button>
-          <button className="primary" disabled={busy || offline || !writable || !open.some(change => !change.conflict)}
-            onClick={() => void run(async () => { await syncRecords(user.id, farm, module); await afterSync() })}>Sincronizar registros</button>
         </div>
         {error && <p className="notice error" role="alert">{error}</p>}
       </section>

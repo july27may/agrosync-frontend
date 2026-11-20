@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { prepareGrant, type User } from '../auth/auth'
+import type { User } from '../auth/auth'
 import { downloadCsv } from '../../shared/csv'
 import { localDate, labelDate } from '../../shared/format'
 import { age } from './edad'
-import { EMPTY, fetchSnapshot, readSnapshot, saveAnimal, saveEvent, syncLivestock } from './data'
+import { EMPTY, fetchSnapshot, readSnapshot, saveAnimal, saveEvent } from './data'
 
 const SEX = { hembra: 'Hembra', macho: 'Macho' }
 const CATEGORY = { ternero: 'Ternero', ternera: 'Ternera', novillo: 'Novillo', novilla: 'Novilla', vaca: 'Vaca', toro: 'Toro' }
@@ -19,8 +19,8 @@ function State({ crmId }: { crmId?: string }) {
   </span>
 }
 
-export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepared }: {
-  ready: boolean; expiresAt?: number; onPrepared: (expiry: number) => void;
+export function Ganaderia({ user, offline, authorize, revision }: {
+  revision: number;
   user: User; offline: boolean; authorize: (farm: string, onlyAdmin?: boolean) => Promise<boolean>
 }) {
   const [data, setData] = useState(EMPTY)
@@ -54,7 +54,7 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
       setData(stored)
       if (navigator.onLine && !offline) await fetchSnapshot(user.id)
     })
-  }, [user.id, offline])
+  }, [user.id, offline, revision])
 
   const farms = data.fincas.filter(farm => Object.hasOwn(user.permisos, farm.id))
   const farmId = farms.find(farm => farm.id === selectedFarm)?.id ?? farms[0]?.id ?? ''
@@ -66,7 +66,6 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
   const names = new Map(animals.map(animal => [animal.id, animal.nombre]))
   const contactNames = new Map(data.contactos.map(contact => [contact.id, contact.nombre]))
-  const pending = [...animals, ...events].filter(record => !record.crmId).length
 
   function capture(kind: 'animal' | 'evento', event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -115,19 +114,6 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
         {!farms.length && <option value="">Sin fincas descargadas</option>}
         {farms.map(farm => <option key={farm.id} value={farm.id}>{farm.nombre}</option>)}
       </select></label>
-      {expiresAt && expiresAt > Date.now() && <p>Autorización offline hasta {new Date(expiresAt).toLocaleString('es-CO')}.</p>}
-      <div className="session-tools">
-        <button className="secondary" disabled={offline || busy || !ready || !farms.length} onClick={() => void run(async () => {
-          const grant = await prepareGrant()
-          onPrepared(grant.expiresAt)
-          setNotice('Dispositivo preparado para trabajar sin conexión.')
-        })}>Preparar Ganadería offline</button>
-        <button className="secondary" disabled={offline || busy} onClick={() => void run(() => fetchSnapshot(user.id))}>Actualizar Ganadería</button>
-        <button className="secondary" disabled={offline || busy || !pending || !canCreateEvent} onClick={() => void run(async () => {
-          const count = await syncLivestock(user.id, farmId, entity => entity === 'animal' ? canCreateAnimal : canCreateEvent)
-          setNotice(`${count} ${count === 1 ? 'registro confirmado' : 'registros confirmados'} en SuiteCRM.`)
-        })}>Sincronizar Ganadería</button>
-      </div>
     </section>
     {error && <p role="alert" className="notice error">{error}</p>}
     {notice && <p role="status" className="notice success">{notice}</p>}

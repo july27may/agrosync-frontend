@@ -117,12 +117,13 @@ async function enqueue(operation: Operation) {
   await done
 }
 
-export async function syncLivestock(owner: string, farm: string, canWrite: (entity: Operation['entity']) => boolean) {
+export async function syncLivestock(owner: string, farm: string, canWrite: (entity: Operation['entity']) => boolean, includeConflicts: boolean) {
   const db = await openDatabase()
   const stored: Operation[] = await result(db.transaction(STORES.operations).objectStore(STORES.operations).getAll())
   const queue = stored.filter(operation =>
     (operation.entity === 'animal' || operation.entity === 'evento-sanitario')
-      && operation.state === 'pending' && operation.owner === owner && operation.payload.fincaId === farm)
+      && operation.state === 'pending' && operation.owner === owner && operation.payload.fincaId === farm
+      && (includeConflicts || !operation.conflict) && canWrite(operation.entity))
   const pending = new Map(queue.map(operation => [operation.operationId, operation]))
   const syncing = new Set<string>()
   const snapshot = await readSnapshot(owner)

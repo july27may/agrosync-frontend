@@ -65,11 +65,13 @@ export function locked() {
   return localStorage.getItem(lockKey) === '1'
 }
 
-export async function prepareGrant() {
+export async function prepareGrant(owner: string) {
+  if (!navigator.onLine || locked()) throw new Error('Conéctate e inicia sesión para preparar el dispositivo.')
   const response = await post('offline', new URLSearchParams({ deviceId: device() }))
   if (!response.ok) throw new Error('No se pudo autorizar este dispositivo.')
   const signed: SignedGrant = await response.json()
   const grant = await verify(signed)
+  if (locked() || grant.user.id !== owner) throw new Error('La sesión cambió antes de preparar el dispositivo.')
   localStorage.setItem(grantKey, JSON.stringify(signed))
   return grant
 }

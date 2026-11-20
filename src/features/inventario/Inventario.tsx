@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { discardGrant, type User } from '../auth/auth'
 import { downloadCsv } from '../../shared/csv'
 import { FarmAccessDenied } from '../../shared/api'
-import { readInventory, refreshInventory, saveInventory, syncInventory, type Movement, type Operation } from './data'
+import { readInventory, refreshInventory, saveInventory, type Movement, type Operation } from './data'
 import type { Catalogs } from '../catalogos/catalogs'
 
 type Props = {
-  user: User; farms: Catalogs['fincas']; offline: boolean; ready: boolean; expiresAt?: number
-  prepare: () => Promise<void>; authorize: (farm: string) => Promise<boolean>
+  user: User; farms: Catalogs['fincas']; offline: boolean; revision: number; expiresAt?: number
+  authorize: (farm: string) => Promise<boolean>
 }
 
 function thousandths(value: string) {
@@ -30,7 +30,7 @@ function exportHistory(snapshot: NonNullable<Awaited<ReturnType<typeof readInven
   downloadCsv('inventario-agrosync.csv', columns, rows)
 }
 
-export function Inventario({ user, farms, offline, ready, expiresAt, prepare, authorize }: Props) {
+export function Inventario({ user, farms, offline, revision, expiresAt, authorize }: Props) {
   const [selected, select] = useState('')
   const farm = farms.some(item => item.id === selected) ? selected : farms[0]?.id ?? ''
   const role = user.permisos[farm]
@@ -61,7 +61,7 @@ export function Inventario({ user, farms, offline, ready, expiresAt, prepare, au
       setError(failure instanceof Error ? failure.message : 'La consulta no se pudo actualizar.')
     })
     return () => { current = false }
-  }, [user.id, farm, offline])
+  }, [user.id, farm, offline, revision])
 
   async function run(action: () => Promise<unknown>) {
     if (active.current || !farm) return
@@ -119,12 +119,6 @@ export function Inventario({ user, farms, offline, ready, expiresAt, prepare, au
         <label>Finca de inventario<select value={farm} disabled={busy} onChange={event => select(event.target.value)}>
           {farms.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}
         </select></label>
-        <div className="action-group">
-          <button className="secondary" disabled={busy || offline || !ready || !snapshot}
-            onClick={() => void run(prepare)}>Preparar inventario offline</button>
-          <button className="primary" disabled={busy || offline || !canWrite || !data?.operations.some(op => !op.conflict && !op.discarded && op.state !== 'confirmed')}
-            onClick={() => void run(() => syncInventory(user.id, farm))}>Sincronizar inventario</button>
-        </div>
         {error && <p className="notice error" role="alert">{error}</p>}
       </section>
       <section className="card"><header className="card-heading"><h2>Existencias</h2></header>

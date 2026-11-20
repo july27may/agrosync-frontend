@@ -56,13 +56,13 @@ export async function saveChange(change: Change, previous?: Change, keepCentral 
   if (previous || keepCentral) notifyResolution()
 }
 
-export async function syncRecords(owner: string, farm: string, module: Module) {
+export async function syncRecords(owner: string, farm: string, module: Module, allowed: (change: Change) => boolean) {
   const csrf = await request('auth/csrf')
   if (!csrf.ok) throw new Error('Inicia sesión para sincronizar.')
   const { token, headerName } = await csrf.json()
   const { changes } = await readRecords(owner, farm, module)
   for (const change of changes) {
-    if (change.conflict || change.superseded || change.state === 'confirmed') continue
+    if (!allowed(change) || change.conflict || change.superseded || change.state === 'confirmed') continue
     const { operationId, fincaId, id, version, nombre, codigo, loteId, fecha, tipo, unidad, categoria,
       recolectorId, estadoCafe, pesoKg, tarifaKg, sexo, nacimiento, madreId, raza, estado,
       animalId, responsableId, producto, certificado, observaciones } = change

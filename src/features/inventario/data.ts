@@ -52,13 +52,13 @@ export async function saveInventory(operation: Operation, discard = false) {
   if (discard) notifyResolution()
 }
 
-export async function syncInventory(owner: string, farm: string) {
+export async function syncInventory(owner: string, farm: string, allowed: (movement: Operation) => boolean) {
   const { operations } = await readInventory(owner, farm)
   const csrf = await request('auth/csrf')
   if (!csrf.ok) throw new Error('No se pudo verificar la sesión.')
   const { token, headerName } = await csrf.json()
   for (const operation of operations) {
-    if (operation.conflict || operation.discarded || operation.state === 'confirmed') continue
+    if (!allowed(operation) || operation.conflict || operation.discarded || operation.state === 'confirmed') continue
     const { operationId, fincaId, insumoId, tipo, cantidad, unidad, origenId, referencia } = operation
     try {
       const response = await request('inventario/movimientos', {

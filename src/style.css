@@ -57,6 +57,15 @@ small { display:block; margin-top:3px; font-size:.8rem; }
 .empty { margin-top:14px; font-size:.92rem; }
 .history { margin:20px 0 36px; }
 .table-wrap { overflow-x:auto; }
+.table-pagination {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+  margin-top:14px;
+}
+.table-pagination p { font-size:.9rem; }
 table { width:100%; border-collapse:collapse; font-size:.9rem; }
 th,td { text-align:left; padding:10px; border-bottom:1px solid var(--border); white-space:nowrap; }
 th { background:#edf3ef; color:#375247; font-weight:750; }
@@ -120,3 +129,5 @@ textarea { font:inherit; color:inherit; width:100%; resize:vertical; padding:9px
 .record-detail { margin-top: .45rem; font-size: .88rem; }
 .table-detail { white-space: normal; min-width: 12rem; }
 .tag.neutral { background: #edf3ef; color: #375247; }
+
+.device-bar { margin: 20px 0 0; }
