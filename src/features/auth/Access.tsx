@@ -107,6 +107,15 @@ export function Access() {
   if (session) return <App key={JSON.stringify([session.user.id, session.user.permisos])} user={session.user} offline={session.offline}
     expiresAt={session.expiresAt} issuedAt={session.issuedAt}
     onPrepared={({ expiresAt, issuedAt }) => setSession(current => current ? { ...current, expiresAt, issuedAt } : current)}
+    refreshPermissions={async () => {
+      const user = await serverUser()
+      if (!user || user.id !== session.user.id || locked()) {
+        throw new Error('La finca fue registrada. Inicia sesión para consultar los permisos actualizados.')
+      }
+      const grant = await currentGrant(user)
+      setSession(current => current?.user.id === user.id && !locked()
+        ? { ...current, user, expiresAt: grant?.expiresAt, issuedAt: grant?.issuedAt } : current)
+    }}
     onSessionExpired={() => {
       setSession(undefined)
       setError('La sesión venció. Inicia sesión para enviar tus pendientes.')

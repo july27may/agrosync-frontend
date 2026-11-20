@@ -1,4 +1,5 @@
-import { enqueueResolution, notifyResolution } from '../incidencias/incidents'
+import { notifySyncRequest } from '../sincronizacion/requests'
+import { enqueueResolution } from '../incidencias/incidents'
 import { checkFarmAuthentication, request } from '../../shared/api'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
 
@@ -43,13 +44,17 @@ export async function refreshInventory(owner: string, farm: string) {
 }
 
 export async function saveInventory(operation: Operation, discard = false) {
+  await writeOperation(operation, discard)
+  notifySyncRequest()
+}
+
+async function writeOperation(operation: Operation, discard = false) {
   const db = await openDatabase()
   const tx = db.transaction(STORES.operations, 'readwrite')
   const queue = tx.objectStore(STORES.operations)
   queue.put(operation)
   if (discard) enqueueResolution(queue, operation, 'inventario/movimientos', 'DESCARTAR_PENDIENTE')
   await committed(tx)
-  if (discard) notifyResolution()
 }
 
 export async function syncInventory(owner: string, farm: string, allowed: (movement: Operation) => boolean) {
@@ -69,7 +74,7 @@ export async function syncInventory(owner: string, farm: string, allowed: (movem
       if (!response.ok) {
         const conflict = response.status === 409
         const failure = await response.json().catch(() => ({}))
-        await saveInventory({ ...operation, conflict, issue: failure.message ?? `Envío rechazado (HTTP ${response.status}).` })
+        await writeOperation({ ...operation, conflict, issue: failure.message ?? `Envío rechazado (HTTP ${response.status}).` })
         if (conflict) await refreshInventory(owner, farm).catch(() => {})
         break
       }
@@ -77,7 +82,7 @@ export async function syncInventory(owner: string, farm: string, allowed: (movem
       if (receipt.operationId !== operationId || receipt.crmId !== operationId) throw new Error('Acuse inesperado.')
       await store(owner, farm, await fetchInventory(farm), operation)
     } catch {
-      await saveInventory({ ...operation, issue: 'Sin confirmación local. Puedes volver a intentar.' })
+      await writeOperation({ ...operation, issue: 'Sin confirmación local. Puedes volver a intentar.' })
       break
     }
   }

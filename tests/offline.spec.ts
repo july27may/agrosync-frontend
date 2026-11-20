@@ -115,7 +115,7 @@ test('descarga, captura offline, confirma atomicidad y recupera al reabrir Chrom
 
     await page.getByLabel('Cantidad (kg)').fill('2,500')
     await page.getByRole('button', { name: 'Guardar recolección' }).click()
-    await expect(page.getByText('Guardado localmente. Pendiente de sincronizar.')).toBeVisible()
+    await expect(page.getByText('Guardado en este dispositivo.')).toBeVisible()
     await expect(page.getByTestId('weekly-total')).toHaveText(/3[.\s]?750,00 COP/)
     const stored = await readStores(page)
     expect(stored.records).toHaveLength(1)

@@ -7,8 +7,6 @@ import { WeeklySummary } from './WeeklySummary'
 import { weekRange } from './settlement'
 import { downloadWeekly, mergeWeekly, readWeekly, weeklyKey, WeeklyAccessDenied, type Snapshot } from './weeklyHarvests'
 
-const PAGE_SIZES = [5, 10, 20, 50]
-
 interface View {
   key: string
   snapshot?: Snapshot
@@ -22,7 +20,6 @@ export function WeeklyHarvests({ owner, farms, selected, select, records, offlin
 }) {
   const [date, setDate] = useState(localDate)
   const [collector, setCollector] = useState('')
-  const [pageSize, setPageSize] = useState(10)
   const [view, setView] = useState<View>()
   const day = date || localDate()
   const { start, end } = weekRange(day)
@@ -75,17 +72,12 @@ export function WeeklyHarvests({ owner, farms, selected, select, records, offlin
           onChange={event => { if (event.target.validity.valid) { setCollector(''); setDate(event.target.value) } }} /></label>
       </div>} />
     <div className="weekly-harvest-list">
-      <div className="fields">
-        <label>Recolector de consulta<select value={selectedCollector} disabled={!collectors.length}
-          onChange={event => setCollector(event.target.value)}>
-          <option value="">Todos los recolectores</option>
-          {collectors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select></label>
-        <label>Registros por página<select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>
-          {PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
-        </select></label>
-      </div>
-      <HarvestList key={JSON.stringify([key, selectedCollector, pageSize])} records={listed} pageSize={pageSize} />
+      <label>Recolector de consulta<select value={selectedCollector} disabled={!collectors.length}
+        onChange={event => setCollector(event.target.value)}>
+        <option value="">Todos los recolectores</option>
+        {collectors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+      </select></label>
+      <HarvestList records={listed} scope={JSON.stringify([key, selectedCollector])} />
     </div>
   </>
 }

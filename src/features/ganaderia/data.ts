@@ -1,3 +1,4 @@
+import { notifySyncRequest } from '../sincronizacion/requests'
 import type { CatalogEntry } from '../catalogos/catalogs'
 import { saveIssue } from '../incidencias/incidents'
 import { request } from '../../shared/api'
@@ -115,6 +116,7 @@ async function enqueue(operation: Operation) {
   tx.objectStore(store).add(operation.payload)
   tx.objectStore(STORES.operations).add(operation)
   await done
+  notifySyncRequest()
 }
 
 export async function syncLivestock(owner: string, farm: string, canWrite: (entity: Operation['entity']) => boolean, includeConflicts: boolean) {

@@ -49,7 +49,7 @@ export function HarvestForm({ catalogs, onSave, owner, authorize, onFarmChange }
       onSave(record)
       const quantity = form.elements.namedItem('cantidad') as HTMLInputElement
       quantity.value = ''
-      setNotice('Guardado localmente. Pendiente de sincronizar.')
+      setNotice('Guardado en este dispositivo.')
     } catch {
       setError('No se pudo guardar la recolección. Los datos del formulario se conservaron para volver a intentar.')
     } finally {

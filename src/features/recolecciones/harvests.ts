@@ -1,3 +1,4 @@
+import { notifySyncRequest } from '../sincronizacion/requests'
 import type { CatalogEntry } from '../catalogos/catalogs'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
 
@@ -53,5 +54,6 @@ export async function saveHarvest(draft: Omit<Harvest, 'id' | 'operationId' | 'c
     throw error
   }
   await done
+  notifySyncRequest()
   return record
 }

@@ -1,4 +1,5 @@
-import { enqueueResolution, notifyResolution } from '../incidencias/incidents'
+import { notifySyncRequest } from '../sincronizacion/requests'
+import { enqueueResolution } from '../incidencias/incidents'
 import { checkFarmAuthentication, request } from '../../shared/api'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
 
@@ -6,7 +7,7 @@ export type Module = 'fincas' | 'lotes' | 'labores' | 'insumos' | 'cosechas' | '
 export type Fields = {
   nombre: string; codigo?: string; loteId?: string; fecha?: string; tipo?: string; unidad?: string; categoria?: string
   sexo?: string; nacimiento?: string; madreId?: string; raza?: string; estado?: string
-  animalId?: string; responsableId?: string; producto?: string; certificado?: string; observaciones?: string
+  animalId?: string; responsableId?: string | null; producto?: string; certificado?: string; observaciones?: string
   recolectorId?: string; estadoCafe?: string; pesoKg?: string; tarifaKg?: string
 }
 export type RecordData = Fields & { id: string; version: string }
@@ -43,6 +44,11 @@ export async function refreshRecords(owner: string, farm: string, module: Module
 }
 
 export async function saveChange(change: Change, previous?: Change, keepCentral = false) {
+  await writeOperation(change, previous, keepCentral)
+  notifySyncRequest()
+}
+
+async function writeOperation(change: Change, previous?: Change, keepCentral = false) {
   const db = await openDatabase()
   const tx = db.transaction(STORES.operations, 'readwrite')
   const queue = tx.objectStore(STORES.operations)
@@ -53,7 +59,6 @@ export async function saveChange(change: Change, previous?: Change, keepCentral 
   }
   if (keepCentral) enqueueResolution(queue, change, `registros/${change.modulo}`, 'CONSERVAR_CENTRAL')
   await committed(tx)
-  if (previous || keepCentral) notifyResolution()
 }
 
 export async function syncRecords(owner: string, farm: string, module: Module, allowed: (change: Change) => boolean) {
@@ -76,12 +81,17 @@ export async function syncRecords(owner: string, farm: string, module: Module, a
       if (!response.ok) {
         const conflict = response.status === 409
         const failure = await response.json().catch(() => ({}))
-        await saveChange({ ...change, conflict, issue: failure.message ?? `HTTP ${response.status}` })
+        await writeOperation({ ...change, conflict, issue: failure.message ?? `HTTP ${response.status}` })
         if (conflict) await refreshRecords(owner, farm, module)
         break
       }
       const receipt = await response.json()
       if (receipt.operationId !== operationId || receipt.registro?.id !== (id ?? operationId)) throw Error()
+      if (module === 'labores' && responsableId != null && receipt.registro.responsableId !== (responsableId || null)) {
+        await writeOperation({ ...change, conflict: true, issue: 'SuiteCRM guardó la labor con un responsable distinto al del borrador.' })
+        await refreshRecords(owner, farm, module)
+        break
+      }
       const refreshed = await fetchRecords(farm, module)
       const db = await openDatabase()
       const tx = db.transaction([STORES.catalogs, STORES.operations], 'readwrite')
@@ -90,7 +100,7 @@ export async function syncRecords(owner: string, farm: string, module: Module, a
       await committed(tx)
     } catch {
       const latest = (await readRecords(owner, farm, module)).changes.find(op => op.operationId === operationId)
-      if (!latest?.conflict) await saveChange({ ...change, issue: 'Sin acuse local. Vuelve a intentar al reconectar.' })
+      if (!latest?.conflict) await writeOperation({ ...change, issue: 'Sin acuse local. Vuelve a intentar al reconectar.' })
       break
     }
   }

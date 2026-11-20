@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { PaginatedTable } from '../../shared/PaginatedTable'
 import type { User } from '../auth/auth'
 import type { CatalogEntry } from '../catalogos/catalogs'
 import { readCentralHistory, readIssues, type AuditEvent } from './incidents'
@@ -87,8 +88,8 @@ export function Incidencias({ user, farms, offline }: { user: User; farms: Catal
   return <main className="shell">
     <div className="intro"><h1>Incidencias de sincronización</h1></div>
     <div className="module-stack">
-      <section className="card">
-        <header className="card-heading"><h2>Bitácora central</h2></header>
+      <section className="card" aria-labelledby="central-audit">
+        <header className="card-heading"><h2 id="central-audit">Bitácora central</h2></header>
         <form className="module-toolbar" onSubmit={search}>
           <div className="fields">
             <label>Finca de la bitácora<select value={farm ?? ''} onChange={event => select(event.target.value)} disabled={!allowed.length}>
@@ -104,32 +105,33 @@ export function Incidencias({ user, farms, offline }: { user: User; farms: Catal
         {offline && <p className="empty">Conéctate para consultar la bitácora central.</p>}
         {error && <p className="notice error" role="alert">{error}</p>}
         {!offline && farm && !visible && !error && <p className="empty" role="status">Cargando bitácora…</p>}
-        {visible && !visible.events.length && <p className="empty">No hay eventos para esta consulta.</p>}
-        {!!visible?.events.length && <div className="table-wrap"><table>
-          <thead><tr><th>Fecha</th><th>Usuario</th><th>Módulo</th><th>Operación</th><th>Estado</th><th>Causa</th></tr></thead>
-          <tbody>{visible.events.map(row => {
+        {visible && <PaginatedTable label="bitácora central" scope={key} rows={visible.events}
+          columns={['Fecha', 'Usuario', 'Módulo', 'Operación', 'Estado', 'Causa']}
+          empty={<p className="empty">No hay eventos para esta consulta.</p>}>
+          {page => page.map(row => {
             const [state, color] = eventNames[row.evento] ?? [row.evento, 'neutral']
             return <tr key={row.id}><td>{timeFormat.format(new Date(row.fecha))}</td><td>{row.usuario}</td>
               <td>{labels[row.modulo] ?? row.modulo}</td><td><code>{row.operationId}</code>
                 {row.relatedOperationId && <small>Corrección: {row.relatedOperationId}</small>}</td>
               <td><span className={`tag ${color}`}>{state}</span></td>
               <td className="table-detail">{row.causa ? causes[row.causa] ?? row.causa : '—'}</td></tr>
-          })}</tbody>
-        </table></div>}
+          })}
+        </PaginatedTable>}
         {!!visible?.next && <button className="secondary" type="button" disabled={busy} onClick={() => void loadMore()}>Ver anteriores</button>}
       </section>
-      <section className="card">
-        <header className="card-heading"><h2>Incidencias de este dispositivo</h2></header>
-        {failed ? <p className="notice error" role="alert">No fue posible abrir las incidencias locales.</p> : !issues.length
-          ? <p className="empty">No hay incidencias guardadas en este dispositivo.</p>
-          : <div className="table-wrap"><table><thead><tr><th>Módulo</th><th>Identificador de operación</th><th>Estado</th><th>Causa</th></tr></thead>
-            <tbody>{issues.map(op => <tr key={op.operationId}><td>{labels[op.entity]}</td><td><code>{op.operationId}</code></td>
+      <section className="card" aria-labelledby="local-issues">
+        <header className="card-heading"><h2 id="local-issues">Incidencias de este dispositivo</h2></header>
+        {failed ? <p className="notice error" role="alert">No fue posible abrir las incidencias locales.</p> :
+          <PaginatedTable label="incidencias locales" scope={user.id} rows={issues}
+            columns={['Módulo', 'Identificador de operación', 'Estado', 'Causa']}
+            empty={<p className="empty">No hay incidencias guardadas en este dispositivo.</p>}>
+            {page => page.map(op => <tr key={op.operationId}><td>{labels[op.entity]}</td><td><code>{op.operationId}</code></td>
               <td><span className={`tag ${op.state === 'confirmed' ? 'online'
                 : op.superseded || op.discarded ? 'neutral' : op.conflict ? 'pending' : 'error'}`}>
                 {op.state === 'confirmed' ? 'Confirmado después de reintento'
                   : op.superseded || op.discarded ? 'Revisado' : op.conflict ? 'Conflicto' : 'Error pendiente'}
-              </span></td><td className="table-detail">{op.issue}</td></tr>)}</tbody>
-          </table></div>}
+              </span></td><td className="table-detail">{op.issue}</td></tr>)}
+          </PaginatedTable>}
       </section>
     </div>
   </main>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { discardGrant, type User } from '../auth/auth'
 import { downloadCsv } from '../../shared/csv'
+import { PaginatedTable } from '../../shared/PaginatedTable'
 import { FarmAccessDenied } from '../../shared/api'
 import { readInventory, refreshInventory, saveInventory, type Movement, type Operation } from './data'
 import type { Catalogs } from '../catalogos/catalogs'
@@ -34,29 +35,29 @@ export function Inventario({ user, farms, offline, revision, expiresAt, authoriz
   const [selected, select] = useState('')
   const farm = farms.some(item => item.id === selected) ? selected : farms[0]?.id ?? ''
   const role = user.permisos[farm]
-  const [data, setData] = useState<Awaited<ReturnType<typeof readInventory>>>()
+  const [loaded, setLoaded] = useState<{ owner: string; farm: string; data: Awaited<ReturnType<typeof readInventory>> }>()
+  const data = loaded?.owner === user.id && loaded.farm === farm ? loaded.data : undefined
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const active = useRef(false)
 
   useEffect(() => {
     let current = true
-    setData(undefined)
     if (!farm) return
     const load = async () => {
       const local = await readInventory(user.id, farm)
-      if (current) setData(local)
+      if (current) setLoaded({ owner: user.id, farm, data: local })
       if (!offline) {
         await refreshInventory(user.id, farm)
         const updated = await readInventory(user.id, farm)
-        if (current) setData(updated)
+        if (current) setLoaded({ owner: user.id, farm, data: updated })
       }
     }
     void load().catch(failure => {
       if (!current) return
       if (failure instanceof FarmAccessDenied) {
         discardGrant()
-        setData(undefined)
+        setLoaded(undefined)
       }
       setError(failure instanceof Error ? failure.message : 'La consulta no se pudo actualizar.')
     })
@@ -70,11 +71,11 @@ export function Inventario({ user, farms, offline, revision, expiresAt, authoriz
     setError('')
     try {
       await action()
-      setData(await readInventory(user.id, farm))
+      setLoaded({ owner: user.id, farm, data: await readInventory(user.id, farm) })
     } catch (failure) {
       if (failure instanceof FarmAccessDenied) {
         discardGrant()
-        setData(undefined)
+        setLoaded(undefined)
       }
       setError(failure instanceof Error ? failure.message : 'No se pudo completar la operación.')
     } finally {
@@ -84,7 +85,10 @@ export function Inventario({ user, farms, offline, revision, expiresAt, authoriz
   }
 
   const snapshot = data?.snapshot
-  const confirmed = new Set(snapshot?.movimientos.map(movement => movement.id))
+  const supplies = snapshot?.insumos ?? []
+  const movements = snapshot?.movimientos ?? []
+  const supplyNames = new Map(supplies.map(item => [item.id, item.nombre]))
+  const confirmed = new Set(movements.map(movement => movement.id))
   const pending = data?.operations.filter(op => !confirmed.has(op.operationId) && op.state !== 'confirmed') ?? []
   const canWrite = Boolean(role && role !== 'CONSULTA' && (!offline || (expiresAt && expiresAt > Date.now())))
 
@@ -121,14 +125,16 @@ export function Inventario({ user, farms, offline, revision, expiresAt, authoriz
         </select></label>
         {error && <p className="notice error" role="alert">{error}</p>}
       </section>
-      <section className="card"><header className="card-heading"><h2>Existencias</h2></header>
+      <section className="card" aria-labelledby="inventory-stock"><header className="card-heading"><h2 id="inventory-stock">Existencias</h2></header>
         {!snapshot && <p>Descarga el inventario con conexión antes de trabajar en campo.</p>}
-        <div className="table-wrap"><table><thead><tr><th>Insumo</th><th>Unidad</th><th>Confirmado</th><th>Provisional</th></tr></thead>
-          <tbody>{snapshot?.insumos.map(item => {
+        <PaginatedTable label="existencias" scope={farm} rows={supplies}
+          columns={['Insumo', 'Unidad', 'Confirmado', 'Provisional']}>
+          {page => page.map(item => {
             const balance = pending.filter(op => op.insumoId === item.id && !op.conflict && !op.discarded)
               .reduce((total, op) => total + thousandths(op.cantidad) * (op.tipo === 'entrada' ? 1n : -1n), thousandths(item.saldo))
             return <tr key={item.id}><td>{item.nombre}</td><td>{item.unidad}</td><td>{item.saldo}</td><td>{decimal(balance)}</td></tr>
-          })}</tbody></table></div>
+          })}
+        </PaginatedTable>
       </section>
       {canWrite && !!snapshot?.insumos.length && <form className="card" onSubmit={capture}>
         <header className="card-heading"><h2>Registrar movimiento</h2></header>
@@ -140,33 +146,39 @@ export function Inventario({ user, farms, offline, revision, expiresAt, authoriz
           <label>Referencia<input name="referencia" maxLength={100} /></label>
         </div><button className="primary">Guardar movimiento</button></fieldset>
       </form>}
-      <section className="card">
+      <section className="card" aria-labelledby="inventory-history">
         <header className="card-heading card-heading-with-actions">
-          <h2>Historial</h2>
+          <h2 id="inventory-history">Historial</h2>
           <button className="secondary" disabled={!snapshot?.movimientos.length}
             onClick={() => snapshot && exportHistory(snapshot)}>Exportar movimientos confirmados</button>
         </header>
-        <div className="table-wrap"><table><thead><tr><th>Insumo</th><th>Movimiento</th><th>Cantidad</th><th>Estado</th></tr></thead><tbody>
-          {pending.map(op => <tr key={op.operationId}><td>{snapshot?.insumos.find(item => item.id === op.insumoId)?.nombre}</td>
-            <td>{op.tipo}</td><td>{op.cantidad}</td><td className="table-detail">
-              <span className={`tag ${op.discarded ? 'neutral' : op.issue && !op.conflict ? 'error' : 'pending'}`}>
-                {op.discarded ? 'Descartado localmente' : op.conflict ? 'Conflicto' : op.issue ? 'Error de envío' : 'Pendiente de sincronizar'}
-              </span>
-              {op.issue && <p className="record-detail">{op.issue} Identificador: {op.operationId}</p>}
-              {canWrite && op.conflict && !op.discarded && <button className="secondary row-action" type="button" disabled={busy} onClick={() => void run(async () => {
-                if (await authorize(farm)) await saveInventory({ ...op, discarded: true }, true)
-              })}>Descartar pendiente</button>}</td></tr>)}
-          {snapshot?.movimientos.map(movement => <tr key={movement.id}>
-            <td>{snapshot.insumos.find(item => item.id === movement.insumoId)?.nombre}</td>
-            <td>{movement.tipo}{movement.origenId ? ' de compensación' : ''}</td><td>{movement.cantidad}</td>
-            <td><span className="tag online">Confirmado en SuiteCRM</span>
-              {canWrite && role === 'ADMINISTRADOR_FINCA' && !movement.origenId
-                && !snapshot.movimientos.some(other => other.origenId === movement.id)
-                && !pending.some(op => op.origenId === movement.id && !op.conflict && !op.discarded)
-                && <button className="secondary row-action" type="button" disabled={busy} onClick={() => void run(() => queue(movement.insumoId,
-                  movement.tipo === 'entrada' ? 'salida' : 'entrada', movement.cantidad, 'Compensación', movement.id))}>Compensar</button>}
-            </td></tr>)}
-        </tbody></table></div>
+        <PaginatedTable label="movimientos de inventario" scope={farm} rows={[...pending, ...movements]}
+          columns={['Insumo', 'Movimiento', 'Cantidad', 'Estado']}>
+          {page => page.map(movement => {
+            if ('operationId' in movement) {
+              const op = movement
+              return <tr key={op.operationId}><td>{supplyNames.get(op.insumoId)}</td>
+                <td>{op.tipo}</td><td>{op.cantidad}</td><td className="table-detail">
+                  <span className={`tag ${op.discarded ? 'neutral' : op.issue && !op.conflict ? 'error' : 'pending'}`}>
+                    {op.discarded ? 'Descartado localmente' : op.conflict ? 'Conflicto' : op.issue ? 'Error de envío' : 'Pendiente de sincronizar'}
+                  </span>
+                  {op.issue && <p className="record-detail">{op.issue} Identificador: {op.operationId}</p>}
+                  {canWrite && op.conflict && !op.discarded && <button className="secondary row-action" type="button" disabled={busy} onClick={() => void run(async () => {
+                    if (await authorize(farm)) await saveInventory({ ...op, discarded: true }, true)
+                  })}>Descartar pendiente</button>}</td></tr>
+            }
+            return <tr key={movement.id}>
+              <td>{supplyNames.get(movement.insumoId)}</td>
+              <td>{movement.tipo}{movement.origenId ? ' de compensación' : ''}</td><td>{movement.cantidad}</td>
+              <td><span className="tag online">Confirmado en SuiteCRM</span>
+                {canWrite && role === 'ADMINISTRADOR_FINCA' && !movement.origenId
+                  && !movements.some(other => other.origenId === movement.id)
+                  && !pending.some(op => op.origenId === movement.id && !op.conflict && !op.discarded)
+                  && <button className="secondary row-action" type="button" disabled={busy} onClick={() => void run(() => queue(movement.insumoId,
+                    movement.tipo === 'entrada' ? 'salida' : 'entrada', movement.cantidad, 'Compensación', movement.id))}>Compensar</button>}
+              </td></tr>
+          })}
+        </PaginatedTable>
       </section>
     </div>
   </main>

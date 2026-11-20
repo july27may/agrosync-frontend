@@ -1,4 +1,5 @@
 import { synchronize } from '../features/sincronizacion/queue'
+import { SYNC_REQUEST } from '../features/sincronizacion/requests'
 import { prepareGrant, type User } from "../features/auth/auth"
 import { useEffect, useRef, useState } from 'react'
 import { loadCatalogs, refreshCatalogs, type Catalogs } from '../features/catalogos/catalogs'
@@ -13,9 +14,10 @@ import { useOfflineStatus } from '../shared/offline'
 
 const moduleNames = { cafe: 'Café', ganaderia: 'Ganadería', inventario: 'Inventario', registros: 'Registros', incidencias: 'Incidencias' }
 
-export function App({ user, offline, close, authorize, expiresAt: prepared, issuedAt, onPrepared, onSessionExpired }: {
+export function App({ user, offline, close, authorize, expiresAt: prepared, issuedAt, onPrepared, onSessionExpired, refreshPermissions }: {
   user: User; offline: boolean; close: () => void; authorize: (farm: string, onlyAdmin?: boolean) => Promise<boolean>; expiresAt?: number; issuedAt?: number
   onPrepared: (grant: { expiresAt: number; issuedAt: number }) => void; onSessionExpired: () => void
+  refreshPermissions: () => Promise<void>
 }) {
   const { online, ready, failed } = useOfflineStatus()
   const [module, setModule] = useState(new URLSearchParams(location.search).get('modulo') ?? 'cafe')
@@ -43,6 +45,7 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, issu
   }
   const syncingRef = useRef(false)
   const retrySync = useRef(false)
+  const queuedSync = useRef<boolean | undefined>(undefined)
   const refreshingRef = useRef(false)
 
   async function prepare(manual = false) {
@@ -89,32 +92,44 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, issu
   async function sync(manual = false) {
     if (offline || !navigator.onLine) return
     if (syncingRef.current) {
-      retrySync.current = true
+      queuedSync.current = manual || queuedSync.current === true
       return
     }
     syncingRef.current = true
+    retrySync.current = false
     setSyncing(true)
     setSyncError('')
     setSyncNotice('')
-    retrySync.current = false
+    let expired = false
     try {
-      const result = await synchronize(user.id, manual)
-      if (!result) {
-        retrySync.current = true
-        return
+      let next: boolean | undefined = manual
+      let confirmed = 0
+      let remaining = 0
+      let issue: string | undefined
+      while (next !== undefined && navigator.onLine) {
+        queuedSync.current = undefined
+        const result = await synchronize(user.id, next)
+        if (!result) {
+          retrySync.current = true
+          break
+        }
+        if (result.expired) {
+          expired = true
+          onSessionExpired()
+          return
+        }
+        retrySync.current = Boolean(result.retry)
+        confirmed += result.confirmed
+        remaining = result.remaining
+        issue = result.issue ?? issue
+        next = queuedSync.current
       }
-      if (result.expired) {
-        onSessionExpired()
-        return
-      }
-      retrySync.current ||= Boolean(result.retry)
-      if (result.issue) setSyncError(result.issue)
-      if (result.confirmed) {
-        setSyncNotice(`${result.confirmed} ${result.confirmed === 1 ? 'operación confirmada' : 'operaciones confirmadas'} en SuiteCRM.`)
+      if (confirmed) {
+        setSyncNotice(`${confirmed} ${confirmed === 1 ? 'operación confirmada' : 'operaciones confirmadas'} en SuiteCRM.`)
         setCatalogs(await refreshCatalogs(user.id).catch(() => loadCatalogs(user.id)))
       }
-      if (result.remaining && !result.issue) {
-        setSyncError('Quedan operaciones por enviar o revisar. Tus registros siguen guardados.')
+      if (remaining) {
+        setSyncError(issue ?? 'Quedan operaciones por enviar o revisar. Tus registros siguen guardados.')
       }
     } catch (failure) {
       setSyncError(failure instanceof Error ? failure.message : 'No se pudo sincronizar. Se conservan los pendientes.')
@@ -122,8 +137,11 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, issu
       try { setRecords(await listHarvests(user.id)) }
       catch { setSyncError('No se pudo releer el historial local.') }
       setWeekRevision(previous => previous + 1)
+      const next = queuedSync.current
+      queuedSync.current = undefined
       syncingRef.current = false
       setSyncing(false)
+      if (!expired && next !== undefined) void sync(next)
     }
   }
 
@@ -132,10 +150,10 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, issu
     const send = () => void sync()
     send()
     const timer = window.setInterval(() => { if (retrySync.current) send() }, 30000)
-    window.addEventListener('agrosync:resolution', send)
+    window.addEventListener(SYNC_REQUEST, send)
     return () => {
       clearInterval(timer)
-      window.removeEventListener('agrosync:resolution', send)
+      window.removeEventListener(SYNC_REQUEST, send)
     }
   }, [user.id, offline, online])
 
@@ -183,7 +201,10 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, issu
     </div>
     {module === 'incidencias' ? <Incidencias user={user} farms={scoped?.fincas ?? []} offline={offline || !online} />
       : module === 'registros' ? <Registros user={user} catalogs={scoped} offline={offline || !online}
-        authorize={authorize} revision={weekRevision} afterCreate={async () => { setCatalogs(await refreshCatalogs(user.id)) }} />
+        authorize={authorize} revision={weekRevision} afterCreate={async () => {
+          setCatalogs(await refreshCatalogs(user.id))
+          await refreshPermissions()
+        }} />
       : module === 'inventario' ? <Inventario user={user} farms={scoped?.fincas ?? []}
         offline={offline || !online} expiresAt={prepared} authorize={authorize} revision={weekRevision} />
       : module === 'ganaderia' ? <Ganaderia user={user} offline={offline || !online} authorize={authorize}

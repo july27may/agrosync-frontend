@@ -57,6 +57,8 @@ small { display:block; margin-top:3px; font-size:.8rem; }
 .empty { margin-top:14px; font-size:.92rem; }
 .history { margin:20px 0 36px; }
 .table-wrap { overflow-x:auto; }
+.table-page-size { width:fit-content; margin:12px 0; }
+.table-page-size select { width:7rem; }
 .table-pagination {
   display:flex;
   flex-wrap:wrap;

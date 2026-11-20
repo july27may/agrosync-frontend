@@ -27,7 +27,8 @@ const writes = (role?: User['permisos'][string]) => role === 'ADMINISTRADOR_FINC
 const modules: Module[] = ['fincas', 'lotes', 'labores', 'insumos', 'cosechas', 'animales', 'eventos']
 
 async function run(owner: string, manual: boolean): Promise<SyncResult> {
-  const pending = (await readOperations(owner)).filter(awaiting)
+  const before = await readOperations(owner)
+  const pending = before.filter(awaiting)
   const empty = { confirmed: 0, remaining: pending.length }
   if (!pending.length || !navigator.onLine || locked()) return empty
   let user: User | undefined
@@ -81,9 +82,11 @@ async function run(owner: string, manual: boolean): Promise<SyncResult> {
     }
   }
   const after = await readOperations(owner)
-  const states = new Map(after.map(row => [row.operationId, row.state]))
-  const confirmed = eligible.filter(row => states.get(row.operationId) === 'confirmed'
-    || (row.entity === 'bitacora-resolucion' && !states.has(row.operationId))).length
+  const previouslyConfirmed = new Set(before.filter(row => row.state === 'confirmed').map(row => row.operationId))
+  const completed = after.filter(row => row.state === 'confirmed' && !previouslyConfirmed.has(row.operationId)).length
+  const remainingIds = new Set(after.map(row => row.operationId))
+  const resolutions = eligible.filter(row => row.entity === 'bitacora-resolucion' && !remainingIds.has(row.operationId)).length
+  const confirmed = completed + resolutions
   return { confirmed, remaining: after.filter(awaiting).length, issue }
 }
 
@@ -92,7 +95,7 @@ export async function synchronize(owner: string, manual: boolean): Promise<SyncR
   running = true
   try {
     if (navigator.locks) {
-      return await navigator.locks.request('agrosync-sync', { ifAvailable: true }, lock => lock ? run(owner, manual) : undefined)
+      return await navigator.locks.request('agrosync-sync', () => run(owner, manual))
     }
     return await run(owner, manual)
   } finally {

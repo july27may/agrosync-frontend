@@ -40,10 +40,6 @@ export function enqueueResolution(queue: IDBObjectStore, source: { owner: string
   queue.add(resolution)
 }
 
-export function notifyResolution() {
-  window.dispatchEvent(new Event('agrosync:resolution'))
-}
-
 export async function flushResolutions(owner: string, farms: string[]) {
   const db = await openDatabase()
   const pending = await result<Resolution[]>(db.transaction(STORES.operations).objectStore(STORES.operations).getAll())

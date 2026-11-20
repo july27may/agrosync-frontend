@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { User } from '../auth/auth'
 import { downloadCsv } from '../../shared/csv'
+import { PaginatedTable } from '../../shared/PaginatedTable'
 import { localDate, labelDate } from '../../shared/format'
 import { age } from './edad'
 import { EMPTY, fetchSnapshot, readSnapshot, saveAnimal, saveEvent } from './data'
@@ -102,7 +103,7 @@ export function Ganaderia({ user, offline, authorize, revision }: {
       }
       form.reset()
       if (animal) setBirth(false)
-      setNotice('Guardado localmente. Pendiente de sincronizar.')
+      setNotice('Guardado en este dispositivo.')
     })
   }
 
@@ -158,17 +159,18 @@ export function Ganaderia({ user, offline, authorize, revision }: {
     </div>
     <section className="card history" aria-label="Animales">
       <header className="card-heading"><h2>Animales</h2></header>
-      {!animals.length ? <p className="empty">No hay animales disponibles para esta finca.</p> : <div className="table-wrap"><table>
-        <thead><tr><th>Animal</th><th>Sexo y categoría</th><th>Nacimiento y edad</th><th>Madre</th><th>Raza y estado</th><th>Sincronización</th></tr></thead>
-        <tbody>{animals.map(animal => <tr key={animal.id}>
+      <PaginatedTable label="animales" scope={farmId} rows={animals}
+        columns={['Animal', 'Sexo y categoría', 'Nacimiento y edad', 'Madre', 'Raza y estado', 'Sincronización']}
+        empty={<p className="empty">No hay animales disponibles para esta finca.</p>}>
+        {page => page.map(animal => <tr key={animal.id}>
           <td><strong>{animal.nombre}</strong><small>{animal.codigo}</small></td>
           <td>{label(SEX, animal.sexo)}<small>{label(CATEGORY, animal.categoria)}</small></td>
           <td>{animal.nacimiento ? labelDate(animal.nacimiento) : '—'}<small>{age(animal.nacimiento, today)}</small></td>
           <td>{animal.madreId ? names.get(animal.madreId) ?? 'Animal no disponible' : 'Desconocida'}</td>
           <td>{animal.raza || '—'}<small>{label(STATUS, animal.estado)}</small></td>
           <td><State crmId={animal.crmId} /></td>
-        </tr>)}</tbody>
-      </table></div>}
+        </tr>)}
+      </PaginatedTable>
     </section>
     <section className="card history" aria-label="Eventos sanitarios">
       <header className="card-heading"><h2>Eventos sanitarios</h2>
@@ -178,17 +180,18 @@ export function Ganaderia({ user, offline, authorize, revision }: {
             label(EVENT, event.tipo), contactNames.get(event.responsableId ?? '') ?? '', event.producto ?? '',
             event.certificado ?? '', event.observaciones ?? '', event.crmId ? 'Confirmado' : 'Pendiente']))}>Exportar historial sanitario</button>
       </header>
-      {!events.length ? <p className="empty">No hay eventos sanitarios para esta finca.</p> : <div className="table-wrap"><table>
-        <thead><tr><th>Evento</th><th>Animal</th><th>Fecha y tipo</th><th>Responsable</th><th>Detalle</th><th>Sincronización</th></tr></thead>
-        <tbody>{events.map(event => <tr key={event.id}>
+      <PaginatedTable label="eventos sanitarios" scope={farmId} rows={events}
+        columns={['Evento', 'Animal', 'Fecha y tipo', 'Responsable', 'Detalle', 'Sincronización']}
+        empty={<p className="empty">No hay eventos sanitarios para esta finca.</p>}>
+        {page => page.map(event => <tr key={event.id}>
           <td><strong>{event.nombre}</strong></td><td>{names.get(event.animalId) ?? 'Animal no disponible'}</td>
           <td>{labelDate(event.fecha)}<small>{label(EVENT, event.tipo)}</small></td>
           <td>{event.responsableId ? contactNames.get(event.responsableId) ?? 'Contacto no disponible' : '—'}</td>
           <td>{event.producto || '—'}{event.certificado && <small>Certificado: {event.certificado}</small>}
             {event.observaciones && <small className="livestock-notes">{event.observaciones}</small>}</td>
           <td><State crmId={event.crmId} /></td>
-        </tr>)}</tbody>
-      </table></div>}
+        </tr>)}
+      </PaginatedTable>
     </section>
   </main>
 }

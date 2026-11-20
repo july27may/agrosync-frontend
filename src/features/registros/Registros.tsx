@@ -14,9 +14,9 @@ const animalStates = { activo: 'Activo', vendido: 'Vendido', fallecido: 'Falleci
 
 const categories = { abono: 'Abono', alimento: 'Alimento', medicamento: 'Medicamento', otro: 'Otro' }
 
-function summary(record: Fields) {
+function summary(record: Fields, responsible?: string) {
   return [record.nombre, record.codigo, record.loteId, record.fecha,
-    record.tipo && types[record.tipo as keyof typeof types], record.unidad,
+    record.tipo && types[record.tipo as keyof typeof types], responsible, record.unidad,
     record.categoria && categories[record.categoria as keyof typeof categories], record.recolectorId,
     record.estadoCafe && COFFEE[record.estadoCafe as keyof typeof COFFEE], record.pesoKg && `${record.pesoKg} kg`,
     record.sexo, record.nacimiento, record.madreId, record.estado, record.raza, record.animalId, record.producto, record.certificado, record.observaciones, record.tarifaKg && `${record.tarifaKg} COP/kg`].filter(Boolean).join(' · ')
@@ -45,6 +45,12 @@ export function Registros({ user, catalogs, offline, authorize, revision, afterC
   const writable = isAdmin || (role === 'REGISTRADOR' && module === 'labores')
   const withLot = module === 'labores' || module === 'cosechas'
   const lots = catalogs?.lotes.filter(lot => lot.fincaId === farm) ?? []
+  const contacts = catalogs?.contactos ?? []
+  const contactNames = new Map(contacts.map(contact => [contact.id, contact.nombre]))
+
+  function responsibleName(id?: string | null) {
+    return id ? contactNames.get(id) ?? 'Contacto no disponible' : 'Sin responsable'
+  }
 
   useEffect(() => {
     setFarmCreation(false)
@@ -121,7 +127,7 @@ export function Registros({ user, catalogs, offline, authorize, revision, afterC
         operationId: crypto.randomUUID(), fincaId: farm, queuedAt: Date.now(), nombre: get('nombre'),
         id: editing?.id, version: editing?.version,
         ...(withLot ? { loteId: get('lote'), fecha: get('fecha') } : { codigo: get('codigo') }),
-        ...(module === 'labores' ? { tipo: get('tipo') } : {}),
+        ...(module === 'labores' ? { tipo: get('tipo'), responsableId: get('responsableId') } : {}),
         ...(module === 'cosechas' ? { recolectorId: get('recolector'), estadoCafe: get('estadoCafe'),
           pesoKg: get('pesoKg').replace(',', '.'), tarifaKg: get('tarifaKg').replace(',', '.') } : {}),
         ...(module === 'animales' ? { sexo: get('sexo'), categoria: get('categoria') || undefined,
@@ -149,13 +155,15 @@ export function Registros({ user, catalogs, offline, authorize, revision, afterC
     const fields = new FormData(event.currentTarget)
     void run(async () => {
       await createFarm(user.id, String(fields.get('nombre') ?? '').trim(), String(fields.get('codigo') ?? '').trim())
+      setNewFarm(false)
       await afterCreate()
-      window.location.reload()
     })
   }
 
   const open = data?.changes.filter(change => !change.superseded && change.state !== 'confirmed') ?? []
+  const recordId = (change: Change) => change.id ?? change.operationId
   const selectedRecord = revising ?? editing
+  const selectedResponsible = selectedRecord?.responsableId ?? editing?.responsableId ?? ''
   return <main className="shell">
     <div className="intro"><div><h1>Registros de finca</h1><p>Fincas, lotes, labores cafeteras e insumos</p></div></div>
     <div className="module-stack">
@@ -180,30 +188,40 @@ export function Registros({ user, catalogs, offline, authorize, revision, afterC
           <div className="action-group">
             <strong>{record.nombre}</strong>
             {(record.codigo || record.fecha) && <span className="record-meta">{record.codigo ?? record.fecha}</span>}
+            {module === 'labores' && <span className="record-meta">Responsable: {responsibleName(record.responsableId)}</span>}
             <span className="tag online">Confirmado en SuiteCRM</span>
           </div>
-          {isAdmin && <button className="secondary" disabled={busy || open.some(change => change.id === record.id)}
+          {isAdmin && <button className="secondary" disabled={busy || open.some(change => recordId(change) === record.id)}
             onClick={() => { setEditing(record); setRevising(undefined); setCreating(false) }}>Editar</button>}
         </li>)}</ul>}
         {!!open.length && <ul className="record-list">{open.map(change => {
-          const central = data?.records.find(record => record.id === change.id)
-          const canReview = writable && change.conflict && (!change.id || (isAdmin && central))
+          const central = data?.records.find(record => record.id === recordId(change))
+          const pendingResponsible = responsibleName(change.responsableId ?? central?.responsableId)
+          const responsibleDiffers = module === 'labores' && !change.id && central && change.responsableId != null
+            && (central.responsableId || null) !== (change.responsableId || null)
+          const conflict = change.conflict || responsibleDiffers
+          const issue = responsibleDiffers ? 'La labor ya existe en SuiteCRM. Revisa el responsable para corregirla.' : change.issue
+          const canReview = writable && conflict && (central ? isAdmin : !change.id)
           return <li key={change.operationId}>
             <div className="action-group">
               <strong>{change.nombre}</strong>
-              <span className={`tag ${change.issue && !change.conflict ? 'error' : 'pending'}`}>
-                {change.conflict ? 'Conflicto' : change.issue ? 'Error de envío' : 'Pendiente de sincronizar'}
+              {module === 'labores' && <span className="record-meta">Responsable: {pendingResponsible}</span>}
+              <span className={`tag ${issue && !conflict ? 'error' : 'pending'}`}>
+                {conflict ? 'Conflicto' : issue ? 'Error de envío' : 'Pendiente de sincronizar'}
               </span>
             </div>
-            {change.issue && <p className="record-detail">{change.issue} Identificador: {change.operationId}</p>}
-            {change.conflict && central && <div className="record-detail">
-              <p>Versión confirmada: {summary(central)}</p><p>Tu borrador: {summary(change)}</p>
+            {issue && <p className="record-detail">{issue} Identificador: {change.operationId}</p>}
+            {conflict && central && <div className="record-detail">
+              <p>Versión confirmada: {summary(central, module === 'labores' ? responsibleName(central.responsableId) : undefined)}</p>
+              <p>Tu borrador: {summary(change, module === 'labores' ? pendingResponsible : undefined)}</p>
             </div>}
-            {(canReview || (change.conflict && central && isAdmin)) && <div className="action-group record-actions">
+            {conflict && central && role === 'REGISTRADOR' &&
+              <p className="record-detail">Un administrador de la finca debe corregir el registro existente.</p>}
+            {(canReview || (conflict && central && isAdmin)) && <div className="action-group record-actions">
               {canReview && <button className="primary" disabled={busy || offline} onClick={() => {
                 setEditing(central); setCreating(!central); setRevising(change)
               }}>Revisar cambios</button>}
-              {change.conflict && central && isAdmin && <button className="secondary" disabled={busy} onClick={() => void run(async () => {
+              {conflict && central && isAdmin && <button className="secondary" disabled={busy} onClick={() => void run(async () => {
                 if (await authorize(farm)) await saveChange({ ...change, superseded: true }, undefined, true)
               })}>Conservar versión de SuiteCRM</button>}
             </div>}
@@ -234,9 +252,17 @@ export function Registros({ user, catalogs, offline, authorize, revision, afterC
               {lots.map(lot => <option key={lot.id} value={lot.id}>{lot.nombre}</option>)}</select></label>
             <label>Fecha<input name="fecha" type="date" required defaultValue={selectedRecord?.fecha ?? localDate()} /></label>
           </>}
-          {module === 'labores' && <label>Labor<select name="tipo" required defaultValue={selectedRecord?.tipo ?? ''}>
+          {module === 'labores' && <>
+            <label>Labor<select name="tipo" required defaultValue={selectedRecord?.tipo ?? ''}>
               <option value="">Selecciona una labor</option>
-              {Object.entries(types).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>}
+              {Object.entries(types).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+            <label>Responsable de la labor<select name="responsableId" defaultValue={selectedResponsible}>
+              <option value="">Sin responsable</option>
+              {selectedResponsible && !contactNames.has(selectedResponsible) &&
+                <option value={selectedResponsible}>Contacto no disponible</option>}
+              {contacts.map(contact => <option key={contact.id} value={contact.id}>{contact.nombre}</option>)}
+            </select></label>
+          </>}
           {module === 'cosechas' && <>
             <label>Recolector<select name="recolector" required defaultValue={selectedRecord?.recolectorId ?? ''}>
               <option value="">Selecciona un recolector</option>
