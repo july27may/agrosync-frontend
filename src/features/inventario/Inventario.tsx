@@ -114,55 +114,66 @@ export function Inventario({ user, farms, offline, ready, expiresAt, prepare, au
 
   return <main className="shell">
     <div className="intro"><div><h1>Inventario</h1><p>Existencias y movimientos por finca</p></div></div>
-    <section className="card">
-      <label>Finca de inventario<select value={farm} disabled={busy} onChange={event => select(event.target.value)}>
-        {farms.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}
-      </select></label>
-      <button className="secondary" disabled={busy || offline || !ready || !snapshot}
-        onClick={() => void run(prepare)}>Preparar inventario offline</button>
-      <button className="secondary" disabled={busy || offline || !canWrite || !data?.operations.some(op => !op.conflict && !op.discarded && op.state !== 'confirmed')}
-        onClick={() => void run(() => syncInventory(user.id, farm))}>Sincronizar inventario</button>
-      {error && <p role="alert">{error}</p>}
-    </section>
-    <section className="card"><h2>Existencias</h2>
-      {!snapshot && <p>Descarga el inventario con conexión antes de trabajar en campo.</p>}
-      <table><thead><tr><th>Insumo</th><th>Unidad</th><th>Confirmado</th><th>Provisional</th></tr></thead>
-        <tbody>{snapshot?.insumos.map(item => {
-          const balance = pending.filter(op => op.insumoId === item.id && !op.conflict && !op.discarded)
-            .reduce((total, op) => total + thousandths(op.cantidad) * (op.tipo === 'entrada' ? 1n : -1n), thousandths(item.saldo))
-          return <tr key={item.id}><td>{item.nombre}</td><td>{item.unidad}</td><td>{item.saldo}</td><td>{decimal(balance)}</td></tr>
-        })}</tbody></table>
-    </section>
-    {canWrite && !!snapshot?.insumos.length && <form className="card" onSubmit={capture}>
-      <h2>Registrar movimiento</h2>
-      <fieldset disabled={busy}><div className="fields">
-        <label>Insumo<select name="insumo" required>{snapshot.insumos.filter(item => item.estado === 'activo')
-          .map(item => <option key={item.id} value={item.id}>{item.nombre} ({item.unidad})</option>)}</select></label>
-        <label>Movimiento<select name="tipo"><option value="entrada">Entrada</option><option value="salida">Salida</option></select></label>
-        <label>Cantidad<input name="cantidad" required inputMode="decimal" /></label>
-        <label>Referencia<input name="referencia" maxLength={100} /></label>
-      </div><button className="primary">Guardar movimiento</button></fieldset>
-    </form>}
-    <section className="card"><h2>Historial</h2>
-      <button disabled={!snapshot?.movimientos.length} onClick={() => snapshot && exportHistory(snapshot)}>Exportar movimientos confirmados</button>
-      <table><thead><tr><th>Insumo</th><th>Movimiento</th><th>Cantidad</th><th>Estado</th></tr></thead><tbody>
-        {pending.map(op => <tr key={op.operationId}><td>{snapshot?.insumos.find(item => item.id === op.insumoId)?.nombre}</td>
-          <td>{op.tipo}</td><td>{op.cantidad}</td><td>{op.discarded ? 'Descartado localmente' : op.conflict ? 'Conflicto' : op.issue ? 'Error de envío' : 'Pendiente de sincronizar'}
-            {op.issue && <p>{op.issue} Identificador: {op.operationId}</p>}
-            {canWrite && op.conflict && !op.discarded && <button type="button" disabled={busy} onClick={() => void run(async () => {
-              if (await authorize(farm)) await saveInventory({ ...op, discarded: true })
-            })}>Descartar pendiente</button>}</td></tr>)}
-        {snapshot?.movimientos.map(movement => <tr key={movement.id}>
-          <td>{snapshot.insumos.find(item => item.id === movement.insumoId)?.nombre}</td>
-          <td>{movement.tipo}{movement.origenId ? ' de compensación' : ''}</td><td>{movement.cantidad}</td>
-          <td><span>Confirmado en SuiteCRM</span>
-            {canWrite && role === 'ADMINISTRADOR_FINCA' && !movement.origenId
-              && !snapshot.movimientos.some(other => other.origenId === movement.id)
-              && !pending.some(op => op.origenId === movement.id && !op.conflict && !op.discarded)
-              && <button type="button" disabled={busy} onClick={() => void run(() => queue(movement.insumoId,
-                movement.tipo === 'entrada' ? 'salida' : 'entrada', movement.cantidad, 'Compensación', movement.id))}>Compensar</button>}
-          </td></tr>)}
-      </tbody></table>
-    </section>
+    <div className="module-stack">
+      <section className="card module-toolbar">
+        <label>Finca de inventario<select value={farm} disabled={busy} onChange={event => select(event.target.value)}>
+          {farms.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}
+        </select></label>
+        <div className="action-group">
+          <button className="secondary" disabled={busy || offline || !ready || !snapshot}
+            onClick={() => void run(prepare)}>Preparar inventario offline</button>
+          <button className="primary" disabled={busy || offline || !canWrite || !data?.operations.some(op => !op.conflict && !op.discarded && op.state !== 'confirmed')}
+            onClick={() => void run(() => syncInventory(user.id, farm))}>Sincronizar inventario</button>
+        </div>
+        {error && <p className="notice error" role="alert">{error}</p>}
+      </section>
+      <section className="card"><header className="card-heading"><h2>Existencias</h2></header>
+        {!snapshot && <p>Descarga el inventario con conexión antes de trabajar en campo.</p>}
+        <div className="table-wrap"><table><thead><tr><th>Insumo</th><th>Unidad</th><th>Confirmado</th><th>Provisional</th></tr></thead>
+          <tbody>{snapshot?.insumos.map(item => {
+            const balance = pending.filter(op => op.insumoId === item.id && !op.conflict && !op.discarded)
+              .reduce((total, op) => total + thousandths(op.cantidad) * (op.tipo === 'entrada' ? 1n : -1n), thousandths(item.saldo))
+            return <tr key={item.id}><td>{item.nombre}</td><td>{item.unidad}</td><td>{item.saldo}</td><td>{decimal(balance)}</td></tr>
+          })}</tbody></table></div>
+      </section>
+      {canWrite && !!snapshot?.insumos.length && <form className="card" onSubmit={capture}>
+        <header className="card-heading"><h2>Registrar movimiento</h2></header>
+        <fieldset disabled={busy}><div className="fields">
+          <label>Insumo<select name="insumo" required>{snapshot.insumos.filter(item => item.estado === 'activo')
+            .map(item => <option key={item.id} value={item.id}>{item.nombre} ({item.unidad})</option>)}</select></label>
+          <label>Movimiento<select name="tipo"><option value="entrada">Entrada</option><option value="salida">Salida</option></select></label>
+          <label>Cantidad<input name="cantidad" required inputMode="decimal" /></label>
+          <label>Referencia<input name="referencia" maxLength={100} /></label>
+        </div><button className="primary">Guardar movimiento</button></fieldset>
+      </form>}
+      <section className="card">
+        <header className="card-heading card-heading-with-actions">
+          <h2>Historial</h2>
+          <button className="secondary" disabled={!snapshot?.movimientos.length}
+            onClick={() => snapshot && exportHistory(snapshot)}>Exportar movimientos confirmados</button>
+        </header>
+        <div className="table-wrap"><table><thead><tr><th>Insumo</th><th>Movimiento</th><th>Cantidad</th><th>Estado</th></tr></thead><tbody>
+          {pending.map(op => <tr key={op.operationId}><td>{snapshot?.insumos.find(item => item.id === op.insumoId)?.nombre}</td>
+            <td>{op.tipo}</td><td>{op.cantidad}</td><td className="table-detail">
+              <span className={`tag ${op.discarded ? 'neutral' : op.issue && !op.conflict ? 'error' : 'pending'}`}>
+                {op.discarded ? 'Descartado localmente' : op.conflict ? 'Conflicto' : op.issue ? 'Error de envío' : 'Pendiente de sincronizar'}
+              </span>
+              {op.issue && <p className="record-detail">{op.issue} Identificador: {op.operationId}</p>}
+              {canWrite && op.conflict && !op.discarded && <button className="secondary row-action" type="button" disabled={busy} onClick={() => void run(async () => {
+                if (await authorize(farm)) await saveInventory({ ...op, discarded: true })
+              })}>Descartar pendiente</button>}</td></tr>)}
+          {snapshot?.movimientos.map(movement => <tr key={movement.id}>
+            <td>{snapshot.insumos.find(item => item.id === movement.insumoId)?.nombre}</td>
+            <td>{movement.tipo}{movement.origenId ? ' de compensación' : ''}</td><td>{movement.cantidad}</td>
+            <td><span className="tag online">Confirmado en SuiteCRM</span>
+              {canWrite && role === 'ADMINISTRADOR_FINCA' && !movement.origenId
+                && !snapshot.movimientos.some(other => other.origenId === movement.id)
+                && !pending.some(op => op.origenId === movement.id && !op.conflict && !op.discarded)
+                && <button className="secondary row-action" type="button" disabled={busy} onClick={() => void run(() => queue(movement.insumoId,
+                  movement.tipo === 'entrada' ? 'salida' : 'entrada', movement.cantidad, 'Compensación', movement.id))}>Compensar</button>}
+            </td></tr>)}
+        </tbody></table></div>
+      </section>
+    </div>
   </main>
 }

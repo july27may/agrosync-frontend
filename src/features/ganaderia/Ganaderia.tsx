@@ -139,7 +139,10 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
           <label>Nombre del animal<input name="nombre" maxLength={255} required /></label>
           <label>Sexo<select name="sexo" defaultValue="" required><option value="">Selecciona</option>{choices(SEX)}</select></label>
           <label>Categoría<select name="categoria"><option value="">Sin categoría</option>{choices(CATEGORY)}</select></label>
-          <label><input type="checkbox" checked={birth} onChange={event => setBirth(event.target.checked)} /> Registrar nacimiento</label>
+          <label className="checkbox-field full">
+            <input type="checkbox" checked={birth} onChange={event => setBirth(event.target.checked)} />
+            Registrar nacimiento
+          </label>
           <label>Fecha de nacimiento<input name="nacimiento" type="date" min="0001-01-01" max={today} required={birth} /></label>
           <label>Madre<select name="madre" required={birth}><option value="">Desconocida</option>
             {animals.filter(animal => animal.sexo === 'hembra').map(animal =>
