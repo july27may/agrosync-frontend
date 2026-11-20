@@ -36,18 +36,29 @@ async function post(path: string, body?: URLSearchParams) {
   return request(`auth/${path}`, { method: 'POST', headers: { [headerName]: token }, body })
 }
 
-export function beginLogin() {
-  localStorage.removeItem(lockKey)
+async function closeServerSessions() {
+  const response = await post('logout')
+  const crmLogout = response.headers.get('X-AgroSync-Logout-Url')
+  if (!response.ok || !crmLogout) throw new Error('No se pudo cerrar la sesión en el servidor.')
+
+  // Same-site cookie credentials reach SuiteCRM even though its logout page has no CORS headers.
+  await fetch(crmLogout, {
+    mode: 'no-cors', credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000),
+  }).catch(() => { throw new Error('No se pudo cerrar la sesión de SuiteCRM. Vuelve a intentar con conexión.') })
+}
+
+export async function beginLogin() {
+  if (locked()) {
+    await closeServerSessions()
+    localStorage.removeItem(lockKey)
+  }
   window.location.assign(apiUrl('auth/login'))
 }
 
 export async function logout(online: boolean) {
   localStorage.setItem(lockKey, '1')
   localStorage.removeItem(grantKey)
-  if (online) {
-    const response = await post('logout')
-    if (!response.ok) throw new Error('No se pudo cerrar la sesión en el servidor.')
-  }
+  if (online) await closeServerSessions()
 }
 
 export function locked() {

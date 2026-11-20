@@ -19,6 +19,7 @@ async function currentGrantExpiry(user: User) {
 export function Access() {
   const [session, setSession] = useState<Session>()
   const [checking, setChecking] = useState(true)
+  const [authAction, setAuthAction] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
   const loginFailure = new URLSearchParams(window.location.search).get('login')
   const loginMessage = loginFailure === 'sesion'
@@ -40,7 +41,7 @@ export function Access() {
         if (navigator.onLine) {
           const user = await serverUser()
           const expiresAt = user ? await currentGrantExpiry(user) : undefined
-          if (active) {
+          if (active && !locked()) {
             setError(user ? '' : loginMessage)
             setSession(user ? { user, offline: false, expiresAt } : undefined)
           }
@@ -102,7 +103,8 @@ export function Access() {
       setSession(undefined)
       setAvailable(false)
       setError('')
-      void logout(navigator.onLine).catch(failure => setError(failure.message))
+      setAuthAction(true)
+      void logout(navigator.onLine).catch(failure => setError(failure.message)).finally(() => setAuthAction(false))
     }}
     authorize={async (farm, onlyAdmin = false) => {
       const user = navigator.onLine ? await serverUser() : (await offlineGrant())?.user
@@ -118,7 +120,14 @@ export function Access() {
     <section className="card login-card">
       <p className="eyebrow">AGROSYNC</p>
       <h1>Iniciar sesión</h1>
-      <button type="button" className="primary" onClick={beginLogin} disabled={checking || !online}>
+      <button type="button" className="primary" onClick={() => {
+        setAuthAction(true)
+        setError('')
+        void beginLogin().catch(failure => {
+          setError(failure.message)
+          setAuthAction(false)
+        })
+      }} disabled={checking || authAction || !online}>
         {checking ? 'Verificando…' : 'Ingresar con SuiteCRM'}
       </button>
       {!online && available && <button className="secondary" onClick={() => {
