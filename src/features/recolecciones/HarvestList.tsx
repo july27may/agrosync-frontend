@@ -1,3 +1,4 @@
+import { downloadCsv } from '../../shared/csv'
 import { kg, labelDate, money } from '../../shared/format'
 import { COFFEE } from './harvests'
 import type { WeeklyHarvest } from '../liquidacion/weeklyHarvests'
@@ -6,6 +7,11 @@ export function HarvestList({ records }: { records: WeeklyHarvest[] }) {
   return <section className="card history" aria-labelledby="history">
     <header className="card-heading">
       <div><h2 id="history">Recolecciones de la semana</h2><p>{records.length} {records.length === 1 ? 'registro' : 'registros'}</p></div>
+      <button className="secondary" disabled={!records.length} onClick={() => downloadCsv('cafe-agrosync.csv',
+        ['Recolector','Finca','Lote','Fecha','Café','Kilogramos','COP por kg','Estado'],
+        records.map(record => [record.recolector.nombre, record.finca.nombre, record.lote.nombre,
+          record.fecha, COFFEE[record.estadoCafe], (record.pesoGramos / 1000).toFixed(3),
+          (record.tarifaCentavos / 100).toFixed(2), record.crmId ? 'Confirmado' : 'Pendiente']))}>Exportar recolecciones</button>
     </header>
     {!records.length ? <p className="empty">No hay recolecciones disponibles para la selección.</p> :
       <div className="table-wrap"><table>

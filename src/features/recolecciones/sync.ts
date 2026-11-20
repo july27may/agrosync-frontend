@@ -1,3 +1,4 @@
+import { saveIssue } from '../incidencias/incidents'
 import { request } from '../../shared/api'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
 import type { Harvest } from './harvests'
@@ -34,14 +35,23 @@ export async function syncHarvests(owner: string, allowed: (farm: string) => boo
         recolectorId: record.recolector.id, fecha: record.fecha, estadoCafe: record.estadoCafe,
         pesoGramos: record.pesoGramos, tarifaCentavos: record.tarifaCentavos,
       }),
-    }).catch(() => { throw new Error('Se perdió la conexión. Conservamos las operaciones sin confirmar.') })
+
+    }).catch(async () => {
+      const message = 'Se perdió la conexión. Conservamos las operaciones sin confirmar.'
+      await saveIssue(owner, operation.operationId, message)
+      throw new Error(message)
+    })
     if (!response.ok) {
       const failure = await response.json().catch(() => ({}))
-      throw new Error(failure.message || 'SuiteCRM no confirmó la operación. Tus pendientes se conservan.')
+      const message = failure.message || 'SuiteCRM no confirmó la operación. Tus pendientes se conservan.'
+      await saveIssue(owner, operation.operationId, message, response.status === 409)
+      throw new Error(message)
     }
     const receipt = await response.json()
     if (receipt.operationId !== operation.operationId || receipt.crmId !== operation.operationId) {
-      throw new Error('La respuesta no confirma esta recolección. La operación sigue pendiente.')
+      const message = 'La respuesta no confirma esta recolección. La operación sigue pendiente.'
+      await saveIssue(owner, operation.operationId, message)
+      throw new Error(message)
     }
     await confirm(db, operation, receipt.crmId)
     confirmed++

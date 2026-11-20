@@ -1,6 +1,6 @@
 import { chromium, expect, test, type BrowserContext } from '@playwright/test'
 import { generateKeyPairSync, sign } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -78,6 +78,9 @@ test('Ganadería registra sin red, recupera referencias y reintenta en orden sin
       await page.getByLabel('Nombre del animal').fill(name)
       await page.getByRole('combobox', { name: 'Sexo' }).selectOption('hembra')
       if (mother) {
+        await page.getByRole('checkbox', { name: 'Registrar nacimiento' }).check()
+        await expect(page.getByLabel('Fecha de nacimiento')).toHaveJSProperty('required', true)
+        await expect(page.getByRole('combobox', { name: 'Madre' })).toHaveJSProperty('required', true)
         const today = await page.evaluate(() => {
           const date = new Date()
           return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
@@ -115,12 +118,20 @@ test('Ganadería registra sin red, recupera referencias y reintenta en orden sin
     const sync = page.getByRole('button', { name: 'Sincronizar Ganadería' })
     await sync.click()
     await expect(page.getByRole('alert')).toContainText('Respuesta perdida')
+    await page.getByRole('button', { name: 'Incidencias' }).click()
+    await expect(page.getByRole('row', { name: /Respuesta perdida/ }).filter({ hasText: motherId })).toContainText(motherId)
+    await page.getByRole('button', { name: 'Ganadería', exact: true }).click()
     await expect(page.getByText('Pendiente de sincronizar', { exact: true })).toHaveCount(3)
     await sync.click()
     await expect(page.getByText('Confirmado en SuiteCRM', { exact: true })).toHaveCount(3)
     expect(attempts).toEqual([motherId, motherId, calfId, eventId])
     expect(writes.size).toBe(3)
     expect(writes.get(calfId)?.madreId).toBe(motherId)
+    expect(writes.get(calfId)?.registrarNacimiento).toBe(true)
+    const exportFile = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Exportar historial sanitario' }).click()
+    const csv = await readFile(await (await exportFile).path(), 'utf8')
+    expect(csv).toContain('"Revisión de prueba","Cría de prueba"')
     expect(writes.get(eventId)?.animalId).toBe(calfId)
     await page.getByRole('button', { name: 'Café', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Recolección de café' })).toBeVisible()

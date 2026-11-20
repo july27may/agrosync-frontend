@@ -174,7 +174,11 @@ test('descarga, captura offline, confirma atomicidad y recupera al reabrir Chrom
     const sync = page.getByRole('button', { name: 'Sincronizar recolecciones' })
     await sync.click()
     await expect(page.getByRole('alert')).toContainText('SuiteCRM no confirmó')
-    expect(await readStores(page)).toEqual(stored)
+    const failed = await readStores(page)
+    expect(failed).toEqual({
+      ...stored,
+      operations: [{ ...stored.operations[0], issue: 'SuiteCRM no confirmó.', conflict: false }],
+    })
     await sync.click()
     await expect(page.getByText('Confirmado en SuiteCRM', { exact: true })).toBeVisible()
     const confirmed = await readStores(page)

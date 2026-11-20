@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { prepareGrant, type User } from '../auth/auth'
+import { downloadCsv } from '../../shared/csv'
 import { localDate, labelDate } from '../../shared/format'
 import { age } from './edad'
 import { EMPTY, fetchSnapshot, readSnapshot, saveAnimal, saveEvent, syncLivestock } from './data'
@@ -24,6 +25,7 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
 }) {
   const [data, setData] = useState(EMPTY)
   const [selectedFarm, setSelectedFarm] = useState('')
+  const [birth, setBirth] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -81,6 +83,7 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
       if (animal) {
         const codigo = text('codigo')
         const madreId = optional('madre')
+        if (birth && (!text('nacimiento') || !madreId)) throw new Error('Indica la fecha y la madre del nacimiento.')
         if (!codigo) throw new Error('Escribe un código válido.')
         if (animals.some(record => record.codigo.toLocaleLowerCase('es-CO') === codigo.toLocaleLowerCase('es-CO'))) {
           throw new Error('El código de animal ya existe en esta finca.')
@@ -89,7 +92,7 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
           throw new Error('Selecciona una madre de esta finca.')
         }
         await saveAnimal(user.id, { fincaId: farmId, nombre: text('nombre'), codigo, madreId,
-          sexo: text('sexo'), categoria: optional('categoria'), nacimiento: optional('nacimiento'),
+          sexo: text('sexo'), categoria: optional('categoria'), nacimiento: optional('nacimiento'), registrarNacimiento: birth,
           raza: optional('raza'), estado: text('estado') })
       } else {
         const animalId = text('animal')
@@ -99,6 +102,7 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
           certificado: optional('certificado'), observaciones: optional('observaciones') })
       }
       form.reset()
+      if (animal) setBirth(false)
       setNotice('Guardado localmente. Pendiente de sincronizar.')
     })
   }
@@ -135,8 +139,9 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
           <label>Nombre del animal<input name="nombre" maxLength={255} required /></label>
           <label>Sexo<select name="sexo" defaultValue="" required><option value="">Selecciona</option>{choices(SEX)}</select></label>
           <label>Categoría<select name="categoria"><option value="">Sin categoría</option>{choices(CATEGORY)}</select></label>
-          <label>Fecha de nacimiento<input name="nacimiento" type="date" min="0001-01-01" max={today} /></label>
-          <label>Madre<select name="madre"><option value="">Desconocida</option>
+          <label><input type="checkbox" checked={birth} onChange={event => setBirth(event.target.checked)} /> Registrar nacimiento</label>
+          <label>Fecha de nacimiento<input name="nacimiento" type="date" min="0001-01-01" max={today} required={birth} /></label>
+          <label>Madre<select name="madre" required={birth}><option value="">Desconocida</option>
             {animals.filter(animal => animal.sexo === 'hembra').map(animal =>
               <option key={animal.id} value={animal.id}>{animal.nombre} · {animal.codigo}</option>)}
           </select></label>
@@ -177,7 +182,13 @@ export function Ganaderia({ user, offline, authorize, ready, expiresAt, onPrepar
       </table></div>}
     </section>
     <section className="card history" aria-label="Eventos sanitarios">
-      <header className="card-heading"><h2>Eventos sanitarios</h2></header>
+      <header className="card-heading"><h2>Eventos sanitarios</h2>
+        <button className="secondary" disabled={!events.length} onClick={() => downloadCsv('sanidad-agrosync.csv',
+          ['Evento','Animal','Fecha','Tipo','Responsable','Producto','Certificado','Observaciones','Estado'],
+          events.map(event => [event.nombre, names.get(event.animalId) ?? event.animalId, event.fecha,
+            label(EVENT, event.tipo), contactNames.get(event.responsableId ?? '') ?? '', event.producto ?? '',
+            event.certificado ?? '', event.observaciones ?? '', event.crmId ? 'Confirmado' : 'Pendiente']))}>Exportar historial sanitario</button>
+      </header>
       {!events.length ? <p className="empty">No hay eventos sanitarios para esta finca.</p> : <div className="table-wrap"><table>
         <thead><tr><th>Evento</th><th>Animal</th><th>Fecha y tipo</th><th>Responsable</th><th>Detalle</th><th>Sincronización</th></tr></thead>
         <tbody>{events.map(event => <tr key={event.id}>

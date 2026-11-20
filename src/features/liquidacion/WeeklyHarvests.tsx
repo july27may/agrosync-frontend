@@ -19,6 +19,7 @@ export function WeeklyHarvests({ owner, farms, selected, select, records, offlin
   records: Harvest[]; offline: boolean; revision: number
 }) {
   const [date, setDate] = useState(localDate)
+  const [collector, setCollector] = useState('')
   const [view, setView] = useState<View>()
   const day = date || localDate()
   const { start, end } = weekRange(day)
@@ -56,17 +57,27 @@ export function WeeklyHarvests({ owner, farms, selected, select, records, offlin
   }, [key, farmId, start, end, offline, revision])
 
   const visible = key && !current?.denied ? mergeWeekly(records, current?.snapshot, farmId, start, end) : []
+  const collectors = [...new Map(visible.map(record => [record.recolector.id, record.recolector.nombre])).entries()]
+  const selectedCollector = collectors.some(([id]) => id === collector) ? collector : ''
+  const listed = selectedCollector ? visible.filter(record => record.recolector.id === selectedCollector) : visible
   const status = key ? current?.status ?? 'Cargando recolecciones…' : 'Selecciona una finca autorizada.'
   return <>
     <WeeklySummary records={visible} date={day} farm={farm?.nombre} status={status} complete={Boolean(current?.snapshot)}
       controls={<div className="fields">
-        <label>Finca de consulta<select value={farmId} onChange={event => select(event.target.value)} disabled={!farms.length}>
+        <label>Finca de consulta<select value={farmId} onChange={event => { setCollector(''); select(event.target.value) }} disabled={!farms.length}>
           {!farms.length && <option value="">Sin fincas disponibles</option>}
           {farms.map(entry => <option key={entry.id} value={entry.id}>{entry.nombre}</option>)}
         </select></label>
         <label>Semana de la fecha<input type="date" min="0001-01-01" max="9999-12-24" value={date}
-          onChange={event => { if (event.target.validity.valid) setDate(event.target.value) }} /></label>
+          onChange={event => { if (event.target.validity.valid) { setCollector(''); setDate(event.target.value) } }} /></label>
       </div>} />
-    <div className="weekly-harvest-list"><HarvestList records={visible} /></div>
+    <div className="weekly-harvest-list">
+      <label>Recolector de consulta<select value={selectedCollector} disabled={!collectors.length}
+        onChange={event => setCollector(event.target.value)}>
+        <option value="">Todos los recolectores</option>
+        {collectors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+      </select></label>
+      <HarvestList records={listed} />
+    </div>
   </>
 }

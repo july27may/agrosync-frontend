@@ -5,19 +5,23 @@ import { HarvestForm } from '../features/recolecciones/HarvestForm'
 import { syncHarvests } from '../features/recolecciones/sync'
 import { listHarvests, type Harvest } from '../features/recolecciones/harvests'
 import { WeeklyHarvests } from '../features/liquidacion/WeeklyHarvests'
+import { Incidencias } from '../features/incidencias/Incidencias'
+import { Registros } from '../features/registros/Registros'
+import { Inventario } from '../features/inventario/Inventario'
 import { Ganaderia } from '../features/ganaderia/Ganaderia'
 import { useOfflineStatus } from '../shared/offline'
+
+const moduleNames = { cafe: 'Café', ganaderia: 'Ganadería', inventario: 'Inventario', registros: 'Registros', incidencias: 'Incidencias' }
 
 export function App({ user, offline, close, authorize, expiresAt: prepared, onPrepared }: {
   user: User; offline: boolean; close: () => void; authorize: (farm: string, onlyAdmin?: boolean) => Promise<boolean>; expiresAt?: number; onPrepared: (expiry: number) => void
 }) {
   const { online, ready, failed } = useOfflineStatus()
-  const [module, setModule] = useState(new URLSearchParams(location.search).get('modulo') === 'ganaderia'
-    ? 'ganaderia' : 'cafe')
+  const [module, setModule] = useState(new URLSearchParams(location.search).get('modulo') ?? 'cafe')
   function navigate(value: string) {
     const url = new URL(location.href)
     url.searchParams.delete('login')
-    if (value === 'ganaderia') url.searchParams.set('modulo', value)
+    if (value !== 'cafe') url.searchParams.set('modulo', value)
     else url.searchParams.delete('modulo')
     window.history.replaceState(null, '', url)
     setModule(value)
@@ -115,14 +119,16 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, onPr
     <header className="top"><div className="shell top-inner">
       <a className="brand" href="/">Agro<span>Sync</span></a>
       <nav className="module-nav" aria-label="Módulos">
-        <button type="button" onClick={() => navigate('cafe')} aria-current={module === 'cafe' ? 'page' : undefined}>Café</button>
-        <button type="button" onClick={() => navigate('ganaderia')} aria-current={module === 'ganaderia' ? 'page' : undefined}>Ganadería</button>
+        {Object.entries(moduleNames).map(([id, name]) => <button key={id} type="button"
+          onClick={() => navigate(id)} aria-current={module === id ? 'page' : undefined}>{name}</button>)}
       </nav>
       <div className="session-tools"><span>{user.username}</span>
       <span className={`tag ${online && !offline ? 'online' : 'pending'}`}><i />{online && !offline ? 'Con conexión' : 'Sin conexión'}</span>
       <button className="secondary" onClick={close}>Cerrar sesión</button></div>
     </div></header>
-    {module === 'ganaderia' ? <Ganaderia user={user} offline={offline || !online} authorize={authorize}
+    {module === 'incidencias' ? <Incidencias user={user} /> : module === 'registros' ? <Registros user={user} catalogs={scoped} offline={offline || !online}
+      ready={ready} prepare={prepare} authorize={authorize} afterSync={refresh} /> : module === 'inventario' ? <Inventario user={user} farms={scoped?.fincas ?? []}
+      offline={offline || !online} ready={ready} expiresAt={prepared} prepare={prepare} authorize={authorize} /> : module === 'ganaderia' ? <Ganaderia user={user} offline={offline || !online} authorize={authorize}
       ready={ready} expiresAt={prepared} onPrepared={onPrepared} /> : <main className="shell">
       <div className="intro"><div>
         <p className="eyebrow">CAFÉ / CAPTURA EN CAMPO</p>

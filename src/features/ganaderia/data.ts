@@ -1,4 +1,5 @@
 import type { CatalogEntry } from '../catalogos/catalogs'
+import { saveIssue } from '../incidencias/incidents'
 import { request } from '../../shared/api'
 import { downloadPages } from '../../shared/pagination'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
@@ -10,6 +11,7 @@ export interface AnimalDraft {
   sexo: string
   categoria: string | null
   nacimiento: string | null
+  registrarNacimiento?: boolean
   madreId: string | null
   raza: string | null
   estado: string
@@ -40,7 +42,7 @@ export const EMPTY: Snapshot = { fincas: [], contactos: [], animales: [], evento
 
 type Operation = (
   { entity: 'animal'; payload: Animal } | { entity: 'evento-sanitario'; payload: HealthEvent }
-) & { operationId: string; owner: string; state: 'pending' | 'confirmed' }
+) & { operationId: string; owner: string; state: 'pending' | 'confirmed'; issue?: string; conflict?: boolean }
 
 export async function fetchSnapshot(owner: string) {
   const [fincas, contactos] = await Promise.all([
@@ -155,7 +157,9 @@ export async function syncLivestock(owner: string, farm: string, canWrite: (enti
     })
     if (!response.ok) {
       const failure = await response.json().catch(() => ({}))
-      throw new Error(failure.message || 'SuiteCRM no confirmó el registro. Se conservan los pendientes.')
+      const message = failure.message || 'SuiteCRM no confirmó el registro. Se conservan los pendientes.'
+      await saveIssue(owner, id, message, response.status === 409)
+      throw new Error(message)
     }
     const receipt = await response.json()
     if (receipt.operationId !== id || receipt.crmId !== id) throw new Error('Acuse ganadero inesperado.')
@@ -171,6 +175,14 @@ export async function syncLivestock(owner: string, farm: string, canWrite: (enti
     confirmed++
   }
 
-  for (const operation of queue) await send(operation)
+  for (const operation of queue) {
+    try {
+      await send(operation)
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : 'El envío ganadero quedó sin confirmar.'
+      if (!operation.issue) await saveIssue(owner, operation.operationId, message, operation.conflict)
+      throw failure
+    }
+  }
   return confirmed
 }

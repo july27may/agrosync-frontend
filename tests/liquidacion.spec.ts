@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 
 test('liquida por finca y semana, incluye pendientes y evita duplicados al consultar sin red', async ({ page, context }) => {
   const origin = 'http://127.0.0.1:5173'
@@ -74,6 +75,19 @@ test('liquida por finca y semana, incluye pendientes y evita duplicados al consu
   await expect(table.getByText('Confirmado en SuiteCRM')).toHaveCount(2)
   await expect(table.getByText('Pendiente de sincronizar')).toHaveCount(1)
   const settlement = page.getByRole('region', { name: 'Liquidación semanal' })
+  const collector = page.getByRole('combobox', { name: 'Recolector de consulta' })
+  await collector.selectOption({ label: R2.nombre })
+  await expect(table.getByRole('row')).toHaveCount(3)
+  await expect(table.getByText(R1.nombre)).toHaveCount(0)
+  const exportFile = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Exportar recolecciones' }).click()
+  const csv = await readFile(await (await exportFile).path(), 'utf8')
+  expect(csv).toContain(R2.nombre)
+  expect(csv).not.toContain(R1.nombre)
+  expect(csv).not.toContain(B.nombre)
+  await expect(settlement.getByRole('listitem').filter({ hasText: R1.nombre })).toBeVisible()
+  await collector.selectOption({ label: 'Todos los recolectores' })
+  await expect(table.getByRole('row')).toHaveCount(4)
   await expect(settlement.getByRole('listitem').filter({ hasText: R1.nombre })).toContainText(/2[.\s]?000,00/)
   await expect(settlement.getByRole('listitem').filter({ hasText: R2.nombre })).toContainText(/2[.\s]?300,00/)
 

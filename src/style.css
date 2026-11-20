@@ -71,7 +71,7 @@ th { background:#edf3ef; color:#375247; font-weight:750; }
 .login-card { width:min(100%,420px); }
 .login-card form { display:grid; gap:14px; margin-top:20px; }
 .top-inner { min-height:64px; height:auto; gap:1rem; padding-block:6px; }
-.module-nav { display:flex; gap:.3rem; }
+.module-nav { display:flex; flex-wrap:wrap; gap:.3rem; }
 .module-nav button { padding:8px 12px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--ink); font-weight:750; }
 .module-nav button[aria-current] { background:#e0f0e7; border-color:#cae2d4; }
 textarea { font:inherit; color:inherit; width:100%; resize:vertical; padding:9px 10px; border:1px solid #c3d2ca; border-radius:8px; }
