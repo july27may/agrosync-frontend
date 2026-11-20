@@ -210,7 +210,7 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
                 setEditing(central); setCreating(!central); setRevising(change)
               }}>Revisar cambios</button>}
               {change.conflict && central && isAdmin && <button className="secondary" disabled={busy} onClick={() => void run(async () => {
-                if (await authorize(farm)) await saveChange({ ...change, superseded: true })
+                if (await authorize(farm)) await saveChange({ ...change, superseded: true }, undefined, true)
               })}>Conservar versión de SuiteCRM</button>}
             </div>}
           </li>

@@ -68,3 +68,8 @@ Con conexión, inicia sesión con SuiteCRM, comprueba la finca y el perfil que m
 Selecciona **Finca de consulta** y cualquier fecha de la semana. El periodo abarca de lunes a domingo. La tabla y la liquidación comparten la misma selección. Al cambiar la finca del formulario también se actualiza la finca consultada. El recolector del formulario solo se usa para la captura.
 
 La consulta combina las cosechas de SuiteCRM con los pendientes de ese dispositivo dentro de la finca y semana. Si una operación local ya está en SuiteCRM, su ID central evita contarla dos veces. El total de la finca suma los subtotales semanales de todos los recolectores. Abre con conexión las semanas que necesites consultar offline. Sin una descarga previa, la vista indica que el total disponible se limita a los datos de ese dispositivo.
+
+
+## Bitácora central
+
+En **Incidencias → Bitácora central**, selecciona una finca y, si quieres buscar una operación exacta, introduce su UUID. Con conexión puedes ver los eventos desde cualquier dispositivo que tenga una sesión y permisos para esa finca. La sección **Incidencias de este dispositivo** conserva el historial local, también disponible sin red. Una resolución guardada sin conexión se envía al recuperar la sesión y la red.

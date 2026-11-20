@@ -160,7 +160,7 @@ export function Inventario({ user, farms, offline, ready, expiresAt, prepare, au
               </span>
               {op.issue && <p className="record-detail">{op.issue} Identificador: {op.operationId}</p>}
               {canWrite && op.conflict && !op.discarded && <button className="secondary row-action" type="button" disabled={busy} onClick={() => void run(async () => {
-                if (await authorize(farm)) await saveInventory({ ...op, discarded: true })
+                if (await authorize(farm)) await saveInventory({ ...op, discarded: true }, true)
               })}>Descartar pendiente</button>}</td></tr>)}
           {snapshot?.movimientos.map(movement => <tr key={movement.id}>
             <td>{snapshot.insumos.find(item => item.id === movement.insumoId)?.nombre}</td>

@@ -38,6 +38,7 @@ test('Ganadería registra sin red, recupera referencias y reintenta en orden sin
         publicKey: keyPair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64url'),
       } })
     }
+    if (url.pathname.endsWith('/bitacora')) return route.fulfill({ headers, json: { eventos: [], siguiente: null } })
     if (url.pathname.endsWith('/ganaderia')) return route.fulfill({ headers, json: { animales: [], eventos: [] } })
     if (url.pathname.includes('/ganaderia/') && method === 'POST') {
       const record: Record<string, string> = JSON.parse(route.request().postData() || '{}')

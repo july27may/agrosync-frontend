@@ -1,3 +1,4 @@
+import { enqueueResolution, notifyResolution } from '../incidencias/incidents'
 import { checkFarmAuthentication, request } from '../../shared/api'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
 
@@ -41,13 +42,18 @@ export async function refreshRecords(owner: string, farm: string, module: Module
   await committed(tx)
 }
 
-export async function saveChange(change: Change, previous?: Change) {
+export async function saveChange(change: Change, previous?: Change, keepCentral = false) {
   const db = await openDatabase()
   const tx = db.transaction(STORES.operations, 'readwrite')
   const queue = tx.objectStore(STORES.operations)
   queue.put(change)
-  if (previous) queue.put({ ...previous, superseded: true })
+  if (previous) {
+    queue.put({ ...previous, superseded: true })
+    enqueueResolution(queue, previous, `registros/${previous.modulo}`, 'PROPONER_REVISION', change.operationId)
+  }
+  if (keepCentral) enqueueResolution(queue, change, `registros/${change.modulo}`, 'CONSERVAR_CENTRAL')
   await committed(tx)
+  if (previous || keepCentral) notifyResolution()
 }
 
 export async function syncRecords(owner: string, farm: string, module: Module) {

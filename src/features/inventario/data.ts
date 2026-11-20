@@ -1,3 +1,4 @@
+import { enqueueResolution, notifyResolution } from '../incidencias/incidents'
 import { checkFarmAuthentication, request } from '../../shared/api'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
 
@@ -41,11 +42,14 @@ export async function refreshInventory(owner: string, farm: string) {
   await store(owner, farm, await fetchInventory(farm))
 }
 
-export async function saveInventory(operation: Operation) {
+export async function saveInventory(operation: Operation, discard = false) {
   const db = await openDatabase()
   const tx = db.transaction(STORES.operations, 'readwrite')
-  tx.objectStore(STORES.operations).put(operation)
+  const queue = tx.objectStore(STORES.operations)
+  queue.put(operation)
+  if (discard) enqueueResolution(queue, operation, 'inventario/movimientos', 'DESCARTAR_PENDIENTE')
   await committed(tx)
+  if (discard) notifyResolution()
 }
 
 export async function syncInventory(owner: string, farm: string) {

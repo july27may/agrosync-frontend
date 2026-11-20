@@ -1,3 +1,4 @@
+import { flushResolutions } from '../features/incidencias/incidents'
 import { prepareGrant, type User } from "../features/auth/auth"
 import { useEffect, useRef, useState } from 'react'
 import { loadCatalogs, refreshCatalogs, type Catalogs } from '../features/catalogos/catalogs'
@@ -18,6 +19,13 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, onPr
 }) {
   const { online, ready, failed } = useOfflineStatus()
   const [module, setModule] = useState(new URLSearchParams(location.search).get('modulo') ?? 'cafe')
+  useEffect(() => {
+    if (offline || !online) return
+    const send = () => void flushResolutions(user.id, Object.keys(user.permisos)).catch(() => {})
+    send()
+    window.addEventListener('agrosync:resolution', send)
+    return () => window.removeEventListener('agrosync:resolution', send)
+  }, [user, online, offline])
   function navigate(value: string) {
     const url = new URL(location.href)
     url.searchParams.delete('login')
@@ -126,7 +134,7 @@ export function App({ user, offline, close, authorize, expiresAt: prepared, onPr
       <span className={`tag ${online && !offline ? 'online' : 'pending'}`}><i />{online && !offline ? 'Con conexión' : 'Sin conexión'}</span>
       <button className="secondary" onClick={close}>Cerrar sesión</button></div>
     </div></header>
-    {module === 'incidencias' ? <Incidencias user={user} /> : module === 'registros' ? <Registros user={user} catalogs={scoped} offline={offline || !online}
+    {module === 'incidencias' ? <Incidencias user={user} farms={scoped?.fincas ?? []} offline={offline || !online} /> : module === 'registros' ? <Registros user={user} catalogs={scoped} offline={offline || !online}
       ready={ready} prepare={prepare} authorize={authorize} afterSync={refresh} /> : module === 'inventario' ? <Inventario user={user} farms={scoped?.fincas ?? []}
       offline={offline || !online} ready={ready} expiresAt={prepared} prepare={prepare} authorize={authorize} /> : module === 'ganaderia' ? <Ganaderia user={user} offline={offline || !online} authorize={authorize}
       ready={ready} expiresAt={prepared} onPrepared={onPrepared} /> : <main className="shell">
