@@ -1,5 +1,7 @@
 # AgroSync Frontend
 
+Consulta la [matriz RF01–RF12 y los resultados del prototipo](https://github.com/july27may/agrosync-suitecrm/blob/main/docs/validacion-rf01-rf12.md).
+
 Captura local de recolecciones de café con React, TypeScript, IndexedDB y un service worker. El backend se usa para descargar catálogos. Las recolecciones y sus operaciones quedan pendientes en el navegador.
 
 ## Ejecutar y preparar la aplicación

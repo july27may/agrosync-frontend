@@ -1,9 +1,11 @@
 import { checkFarmAuthentication, request } from '../../shared/api'
 import { committed, openDatabase, result, STORES } from '../../shared/storage'
 
-export type Module = 'fincas' | 'lotes' | 'labores' | 'insumos' | 'cosechas'
+export type Module = 'fincas' | 'lotes' | 'labores' | 'insumos' | 'cosechas' | 'animales' | 'eventos'
 export type Fields = {
   nombre: string; codigo?: string; loteId?: string; fecha?: string; tipo?: string; unidad?: string; categoria?: string
+  sexo?: string; nacimiento?: string; madreId?: string; raza?: string; estado?: string
+  animalId?: string; responsableId?: string; producto?: string; certificado?: string; observaciones?: string
   recolectorId?: string; estadoCafe?: string; pesoKg?: string; tarifaKg?: string
 }
 export type RecordData = Fields & { id: string; version: string }
@@ -56,12 +58,14 @@ export async function syncRecords(owner: string, farm: string, module: Module) {
   for (const change of changes) {
     if (change.conflict || change.superseded || change.state === 'confirmed') continue
     const { operationId, fincaId, id, version, nombre, codigo, loteId, fecha, tipo, unidad, categoria,
-      recolectorId, estadoCafe, pesoKg, tarifaKg } = change
+      recolectorId, estadoCafe, pesoKg, tarifaKg, sexo, nacimiento, madreId, raza, estado,
+      animalId, responsableId, producto, certificado, observaciones } = change
     try {
       const response = await request(`registros/${module}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', [headerName]: token },
         body: JSON.stringify({ operationId, fincaId, id, version, nombre, codigo, loteId, fecha, tipo, unidad, categoria,
-          recolectorId, estadoCafe, pesoKg, tarifaKg }),
+          recolectorId, estadoCafe, pesoKg, tarifaKg, sexo, nacimiento, madreId, raza, estado,
+          animalId, responsableId, producto, certificado, observaciones }),
       })
       if (!response.ok) {
         const conflict = response.status === 409

@@ -6,8 +6,12 @@ import { COFFEE } from '../recolecciones/harvests'
 import { localDate } from '../../shared/format'
 import { canCreateFarm, createFarm, readRecords, refreshRecords, saveChange, syncRecords, type Change, type Fields, type Module, type RecordData } from './data'
 
-const names = { fincas: 'Fincas', lotes: 'Lotes', labores: 'Labores cafeteras', insumos: 'Insumos', cosechas: 'Recolecciones confirmadas' }
+const names = { fincas: 'Fincas', lotes: 'Lotes', labores: 'Labores cafeteras', insumos: 'Insumos', cosechas: 'Recolecciones confirmadas', animales: 'Animales', eventos: 'Eventos sanitarios' }
 const types = { siembra: 'Siembra', fertilizacion: 'Fertilización', control_malezas: 'Control de malezas', poda: 'Poda', otra: 'Otra' }
+const eventTypes = { vacunacion: 'Vacunación', tratamiento: 'Tratamiento', revision: 'Revisión', otro: 'Otro' }
+const animalCategories = { ternero: 'Ternero', ternera: 'Ternera', novillo: 'Novillo', novilla: 'Novilla', vaca: 'Vaca', toro: 'Toro' }
+const animalStates = { activo: 'Activo', vendido: 'Vendido', fallecido: 'Fallecido', inactivo: 'Inactivo' }
+
 const categories = { abono: 'Abono', alimento: 'Alimento', medicamento: 'Medicamento', otro: 'Otro' }
 
 function summary(record: Fields) {
@@ -15,7 +19,7 @@ function summary(record: Fields) {
     record.tipo && types[record.tipo as keyof typeof types], record.unidad,
     record.categoria && categories[record.categoria as keyof typeof categories], record.recolectorId,
     record.estadoCafe && COFFEE[record.estadoCafe as keyof typeof COFFEE], record.pesoKg && `${record.pesoKg} kg`,
-    record.tarifaKg && `${record.tarifaKg} COP/kg`].filter(Boolean).join(' · ')
+    record.sexo, record.nacimiento, record.madreId, record.estado, record.raza, record.animalId, record.producto, record.certificado, record.observaciones, record.tarifaKg && `${record.tarifaKg} COP/kg`].filter(Boolean).join(' · ')
 }
 
 export function Registros({ user, catalogs, offline, ready, prepare, authorize, afterSync }: {
@@ -28,6 +32,7 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
   const farm = farms.some(item => item.id === selected) ? selected : farms[0]?.id ?? ''
   const [farmCreation, setFarmCreation] = useState(false)
   const [newFarm, setNewFarm] = useState(false)
+  const [animals, setAnimals] = useState<RecordData[]>([])
   const [data, setData] = useState<Awaited<ReturnType<typeof readRecords>>>()
   const [editing, setEditing] = useState<RecordData>()
   const [revising, setRevising] = useState<Change>()
@@ -55,6 +60,7 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
     setRevising(undefined)
     setCreating(false)
     setData(undefined)
+    setAnimals([])
   }, [farm, module])
 
   useEffect(() => {
@@ -63,6 +69,11 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
     async function load() {
       const cached = await readRecords(user.id, farm, module)
       if (current) setData(cached)
+      if (module === 'animales' || module === 'eventos') {
+        if (!offline) await refreshRecords(user.id, farm, 'animales')
+        const references = await readRecords(user.id, farm, 'animales')
+        if (current) setAnimals(references.records)
+      }
       if (!offline) {
         await refreshRecords(user.id, farm, module)
         const updated = await readRecords(user.id, farm, module)
@@ -113,6 +124,12 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
         ...(module === 'labores' ? { tipo: get('tipo') } : {}),
         ...(module === 'cosechas' ? { recolectorId: get('recolector'), estadoCafe: get('estadoCafe'),
           pesoKg: get('pesoKg').replace(',', '.'), tarifaKg: get('tarifaKg').replace(',', '.') } : {}),
+        ...(module === 'animales' ? { sexo: get('sexo'), categoria: get('categoria') || undefined,
+          nacimiento: get('nacimiento') || undefined, madreId: get('madreId') || undefined,
+          raza: get('raza') || undefined, estado: get('estado') } : {}),
+        ...(module === 'eventos' ? { animalId: get('animalId'), fecha: get('fecha'), tipo: get('tipo'),
+          responsableId: get('responsableId') || undefined, producto: get('producto') || undefined,
+          certificado: get('certificado') || undefined, observaciones: get('observaciones') || undefined } : {}),
         ...(module === 'insumos' ? { unidad: editing?.unidad ?? get('unidad'), categoria: get('categoria') } : {}),
       }
       if (module === 'cosechas' && (!/^[0-9]{1,11}(\.[0-9]{1,3})?$/.test(change.pesoKg ?? '')
@@ -155,7 +172,7 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
     </section>
     <section className="card"><h2>{names[module]}</h2>
       {farmCreation && !offline && module === 'fincas' && <button disabled={busy} onClick={() => setNewFarm(true)}>Nueva finca</button>}
-      {writable && module !== 'fincas' && module !== 'cosechas' && <button disabled={busy}
+      {writable && ['lotes', 'labores', 'insumos'].includes(module) && <button disabled={busy}
         onClick={() => { setEditing(undefined); setRevising(undefined); setCreating(true) }}>Nuevo registro</button>}
       <ul>{data?.records.map(record => <li key={record.id}>
         {record.nombre} {record.codigo ?? record.fecha} · Confirmado en SuiteCRM
@@ -190,7 +207,7 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
       {revising && <p>Comprueba los datos centrales de arriba y ajusta el borrador antes de guardarlo de nuevo.</p>}
       <fieldset disabled={busy}><div className="fields">
         <label>Nombre<input name="nombre" required maxLength={255} defaultValue={selectedRecord?.nombre} /></label>
-        {!withLot && <label>Código<input name="codigo" required maxLength={30} defaultValue={selectedRecord?.codigo} /></label>}
+        {!withLot && module !== 'eventos' && <label>Código<input name="codigo" required maxLength={30} defaultValue={selectedRecord?.codigo} /></label>}
         {withLot && <>
           <label>Lote<select name="lote" required defaultValue={selectedRecord?.loteId ?? ''}>
             <option value="">Selecciona un lote</option>
@@ -209,6 +226,34 @@ export function Registros({ user, catalogs, offline, ready, prepare, authorize, 
             {Object.entries(COFFEE).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
           <label>Peso en kg<input name="pesoKg" inputMode="decimal" required defaultValue={selectedRecord?.pesoKg} /></label>
           <label>Tarifa COP/kg<input name="tarifaKg" inputMode="decimal" required defaultValue={selectedRecord?.tarifaKg} /></label>
+        </>}
+        {module === 'animales' && <>
+          <label>Sexo<select name="sexo" defaultValue={selectedRecord?.sexo} required>
+            <option value="hembra">Hembra</option><option value="macho">Macho</option></select></label>
+          <label>Categoría<select name="categoria" defaultValue={selectedRecord?.categoria ?? ''}>
+            <option value="">Sin categoría</option>
+            {Object.entries(animalCategories).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+          <label>Nacimiento<input name="nacimiento" type="date" max={localDate()} defaultValue={selectedRecord?.nacimiento} /></label>
+          <label>Madre<select name="madreId" defaultValue={selectedRecord?.madreId ?? ''}>
+            <option value="">Desconocida</option>
+            {animals.filter(animal => animal.id !== editing?.id && animal.sexo === 'hembra')
+              .map(animal => <option key={animal.id} value={animal.id}>{animal.nombre}</option>)}</select></label>
+          <label>Raza<input name="raza" maxLength={100} defaultValue={selectedRecord?.raza} /></label>
+          <label>Estado<select name="estado" defaultValue={selectedRecord?.estado}>
+            {Object.entries(animalStates).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+        </>}
+        {module === 'eventos' && <>
+          <label>Animal del evento<select name="animalId" required defaultValue={selectedRecord?.animalId}>
+            {animals.map(animal => <option key={animal.id} value={animal.id}>{animal.nombre}</option>)}</select></label>
+          <label>Fecha<input name="fecha" type="date" required defaultValue={selectedRecord?.fecha ?? localDate()} /></label>
+          <label>Tipo de evento<select name="tipo" required defaultValue={selectedRecord?.tipo}>
+            {Object.entries(eventTypes).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+          <label>Responsable<select name="responsableId" defaultValue={selectedRecord?.responsableId ?? ''}>
+            <option value="">Sin responsable</option>
+            {catalogs?.contactos.map(contact => <option key={contact.id} value={contact.id}>{contact.nombre}</option>)}</select></label>
+          <label>Producto<input name="producto" maxLength={150} defaultValue={selectedRecord?.producto} /></label>
+          <label>Certificado<input name="certificado" maxLength={100} defaultValue={selectedRecord?.certificado} /></label>
+          <label>Observaciones<textarea name="observaciones" maxLength={4000} defaultValue={selectedRecord?.observaciones} /></label>
         </>}
         {module === 'insumos' && <>
           <label>Unidad<select name="unidad" disabled={Boolean(editing)} defaultValue={selectedRecord?.unidad ?? 'kg'}>
